@@ -418,4 +418,95 @@ contains
 
   end subroutine time_deconv
 
+  subroutine window_taper(signal, taper_percentage, itaper_type)
+    real(kind=dp), intent(inout) :: signal(:)
+    real(kind=dp), intent(in) :: taper_percentage
+    integer, intent(in) :: itaper_type
+
+    integer :: frac, idx1, idx2, i, npts
+    real(kind=dp), allocatable :: taper(:)
+    real(kind=dp) :: power
+
+    if (taper_percentage < 0.0_dp .or. taper_percentage > 1.0_dp) then
+      print *, "taper_percentage must be 0 < % < 1"
+      stop
+    end if
+
+    npts = size(signal)
+    if (taper_percentage == 0.0_dp .or. taper_percentage == 1.0_dp) then
+      frac = int(npts*taper_percentage/2.0_dp)
+    else
+      frac = int(npts*taper_percentage/2.0_dp + 0.5_dp)
+    end if
+
+    idx1 = frac
+    idx2 = npts - frac
+
+    if (frac > 0) then
+      allocate(taper(frac))
+      select case (itaper_type)
+      case (1) ! "hanning"
+        do i = 1, frac
+          taper(i) = 0.5_dp - 0.5_dp * cos(2.0_dp*pi*real(i-1, dp)/(2*frac-1))
+        end do
+        signal(1:idx1) = signal(1:idx1) * taper(:)
+        do i = 1, frac
+          taper(i) = 0.5_dp - 0.5_dp * cos(2.0_dp*pi*real(frac+i-1, dp)/(2*frac-1))
+        end do
+        signal(idx2+1:npts) = signal(idx2+1:npts) * taper(:)
+      case (2) ! "hamming"
+        do i = 1, frac
+          taper(i) = 0.54_dp - 0.46_dp * cos(2.0_dp*pi*real(i-1, dp)/(2*frac-1))
+        end do
+        signal(1:idx1) = signal(1:idx1) * taper(:)
+        do i = 1, frac
+          taper(i) = 0.54_dp - 0.46_dp * cos(2.0_dp*pi*real(frac+i-1, dp)/(2*frac-1))
+        end do
+        signal(idx2+1:npts) = signal(idx2+1:npts) * taper(:)
+      case (3) ! "cos"
+        power = 1.0_dp
+        do i = 1, frac
+          taper(i) = cos(pi*real(i-1, dp)/(2*frac-1) - pi/2.0_dp)**power
+        end do
+        signal(1:idx1) = signal(1:idx1) * taper(:)
+        do i = 1, frac
+          taper(i) = cos(pi*real(frac+i-1, dp)/(2*frac-1) - pi/2.0_dp)**power
+        end do
+        signal(idx2+1:npts) = signal(idx2+1:npts) * taper(:)
+      case (4) ! "cos^10"
+        power = 10.0_dp
+        do i = 1, frac
+          taper(i) = 1.0_dp - cos(pi*real(i-1, dp)/(2*frac-1))**power
+        end do
+        signal(1:idx1) = signal(1:idx1) * taper(:)
+        do i = 1, frac
+          taper(i) = 1.0_dp - cos(pi*real(frac+i-1, dp)/(2*frac-1))**power
+        end do
+        signal(idx2+1:npts) = signal(idx2+1:npts) * taper(:)
+      case default
+        print *, "Taper type not supported!"
+        stop
+      end select
+      deallocate(taper)
+    end if
+
+  end subroutine window_taper
+
+  subroutine get_window_info(window, dt, nb, ne, nlen_win)
+    real(kind=dp), intent(in) :: window(2)
+    real(kind=dp), intent(in) :: dt
+    integer, intent(out) :: nb, ne, nlen_win
+
+    ! Calculate the number of samples in the window
+    nb = int(window(1) / dt) + 1
+    ne = int(window(2) / dt) + 1
+    nlen_win = ne - nb + 1
+
+    if (nlen_win <= 0) then
+      print *, "Error: Invalid window length."
+      stop
+    end if
+
+  end subroutine
+
 end module signal

@@ -9,6 +9,10 @@ module constants
   real(kind=dp), parameter :: TRBDNDW = 0.3
   real(kind=dp), parameter :: APARM = 30.
   integer, parameter :: PASSES = 2
+  ! number of entries in window_chi output file
+  integer, parameter :: N_MEASUREMENT = 5
+  integer, parameter :: NCHI = 3*(N_MEASUREMENT-1) + 8
+  real(kind=dp), parameter :: PI = 3.141592653589793_dp
 
 end module constants
 

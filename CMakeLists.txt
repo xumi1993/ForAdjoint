@@ -25,8 +25,9 @@ elseif("${CMAKE_FORTRAN_COMPILER_ID}" MATCHES "Flang")
 endif()
 
 # compile src files
-file(GLOB sources "src/*.f90")
-add_library(foradjoint STATIC ${sources})
+file(GLOB utils_sources "src/utils/*.f90")
+file(GLOB adjoint_sources "src/adjoint_source_types/*.f90")
+add_library(foradjoint STATIC ${utils_sources} ${adjoint_sources})
 
 # add example executables
 add_subdirectory(examples)
