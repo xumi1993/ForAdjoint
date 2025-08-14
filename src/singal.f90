@@ -1,19 +1,20 @@
 module signal
   use config
-  use ma_constants
   implicit none
 
 contains
 
-  subroutine bandpass_dp(x ,n, delta_t, f1, f2, order)
+  subroutine bandpass_dp(x, delta_t, f1, f2, order)
     ! a double-precision wrapper around sac xapiir()
     ! modified from FLEXWIN subroutines on 26-July-2009
-    integer, intent(in) :: n, order
+    integer, intent(in) :: order
     real(kind=dp), intent(inout),  dimension(:) :: x
     real(kind=dp), intent(in) :: delta_t
     real(kind=cr), intent(in) :: f1,f2
     real(kind=cr), dimension(:), allocatable :: x_sngl
+    integer :: n
 
+    n = size(x)
     allocate(x_sngl(n))
 
     x_sngl(1:n) = sngl(x(1:n))
@@ -143,6 +144,23 @@ contains
     data(1)=0.
     data(nt)=0.
   end subroutine dif1
+
+  function gradient(y, dx)
+    real(kind=dp), dimension(:), intent(in) :: y
+    real(kind=dp), intent(in) :: dx
+    real(kind=dp), dimension(:), allocatable :: gradient
+    integer :: n, i
+
+    n = size(y)
+    allocate(gradient(n))
+
+    do i = 2, n-1
+      gradient(i) = (y(i+1) - y(i-1)) / (2.0_dp * dx)
+    end do
+    gradient(1) = (y(2) - y(1)) / dx
+    gradient(n) = (y(n) - y(n-1)) / dx
+
+  end function gradient
 
   real(kind=dp) function simpson(y, dx)
     implicit none

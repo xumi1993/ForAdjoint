@@ -39,3 +39,10 @@
 
 # debug information files
 *.dwo
+
+# jupyter notebooks
+*.ipynb
+*.sac
+
+build/
+bin/

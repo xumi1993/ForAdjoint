@@ -1,6 +1,6 @@
 module cross_correlate
   use config
-  use singal
+  use signal
   implicit none
 
 contains
@@ -49,8 +49,7 @@ contains
     misfit_q = 0.5_dp * (dlna / sigma_dlna)**2
 
     ! Calculate the adjoint source for time shift
-    dsdt = s(:)
-    call dif1(dsdt, dt)
+    dsdt = gradient(s, dt)
     nnorm = simpson(dsdt**2, dt)
     adj_p(1:nt) = dsdt(1:nt) * tshift / nnorm / sigma_dt**2
 
@@ -73,8 +72,7 @@ contains
     ! Apply a scaling and time shift to the synthetic data
     call cc_correction(s, ishift, dlna, s_cc_dt, s_cc_dtdlna)
 
-    s_cc_vel = s_cc_dtdlna(:)
-    call dif1(s_cc_vel, dt)
+    s_cc_vel = gradient(s_cc_dtdlna, dt)
 
     sigma_dt_num = sum((d - s_cc_dtdlna)**2)
     sigma_dt_den = sum(s_cc_vel**2)
@@ -95,7 +93,7 @@ contains
 
   end subroutine calc_cc_error
 
-  subroutine cc_correction(s, ishift, dlna, s_cc_dt, s_cc_dtdlna)
+  subroutine cc_correction(s, ishift, dlna, s_cc_dt, s_cc_dtdlna) ! reconstruct_syn_cc
     real(kind=dp), dimension(:), intent(in) :: s
     real(kind=dp), intent(in) :: dlna
     integer, intent(in) :: ishift
@@ -121,7 +119,7 @@ contains
 
   function xcorr_shift(d, s)
     real(kind=dp), dimension(:), intent(in) :: s, d
-    real(kind=dp), dimension(:) :: cc
+    real(kind=dp), dimension(:), allocatable :: cc
     integer :: xcorr_shift
 
     call mycorrelation_dp(d, s, cc, 1)
