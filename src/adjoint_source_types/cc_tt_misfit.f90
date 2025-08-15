@@ -10,7 +10,7 @@ module cc_tt_misfit
                                                 misfit_p, misfit_q, cc_max
   contains
     procedure :: calc_adjoint_source, cc_measure_select
-    procedure :: initialize
+    procedure, private :: initialize
   end type CCTTMisfit
 
 contains
