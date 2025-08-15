@@ -127,5 +127,35 @@ contains
 
   end function xcorr_shift
 
+  function cc_max_coef(d, s)
+    real(kind=dp), dimension(:), intent(in) :: s, d
+    real(kind=dp) :: cc_max_coef
+    real(kind=dp), dimension(:), allocatable :: s_shift, d_shift
+    integer :: nlen, ishift, index, index_shift
+
+    nlen = size(s)
+    allocate(s_shift(nlen))
+    s_shift = 0.0_dp
+    d_shift = d(:)
+
+    ishift = xcorr_shift(d, s)
+    do index = 1, nlen
+      index_shift = index - ishift
+      if (index_shift >= 1 .and. index_shift <= nlen) then
+        s_shift(index) = s(index_shift)
+      end if
+    end do
+
+    ! taper the 0 edges on d
+    if (ishift > 0) then
+      d_shift(1:ishift) = 0.0_dp
+    else if (ishift < 0) then
+      d_shift(nlen+ishift+1:nlen) = 0.0_dp
+    end if
+
+    cc_max_coef = sum(d_shift * s_shift) / sqrt(sum(d_shift**2) * sum(s_shift**2))
+
+  end function cc_max_coef
+
 
 end module cross_correlate

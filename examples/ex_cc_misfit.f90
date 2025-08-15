@@ -80,18 +80,19 @@ program cc_misfit
 
   select case (imeasure_type)
     case (2) ! CC-TT
-      write(*,'(a,F7.5,a,F7.5)') 'Time shift (s): ', cctm%tshift(1), '+/-', cctm%sigma_dt(1)
-      write(*,'(a,F7.5)') 'Time shift misfit: ', cctm%misfit_p(1)
+      write(*,'(a,F8.5,a,F8.5)') 'Time shift (s): ', cctm%tshift(1), '+/-', cctm%sigma_dt(1)
+      write(*,'(a,F8.5)') 'Time shift misfit: ', cctm%misfit_p(1)
       ! write adjoint source to SAC file
       fsac = trim(fadj)//'/'//trim(header%knetwk)//'.'//trim(header%kstnm) &
          //'BXZ.ccdt.sac'
       call sacio_writesac(fsac, header, cctm%adj_src, ier)
     case (3) ! CC-DLNA
-      write(*,'(a,F7.5,a,F7.5)') 'Amplitude anomaly (ln): ', cctm%dlna(1), '+/-', cctm%sigma_dlna(1)
-      write(*,'(a,F7.5)') 'Amplitude anomaly misfit: ', cctm%misfit_q(1)
+      write(*,'(a,F8.5,a,F8.5)') 'Amplitude anomaly (ln): ', cctm%dlna(1), '+/-', cctm%sigma_dlna(1)
+      write(*,'(a,F8.5)') 'Amplitude anomaly misfit: ', cctm%misfit_q(1)
       fsac = trim(fadj)//'/'//trim(header%knetwk)//'.'//trim(header%kstnm) &
          //'BXZ.ccdlna.sac'
       call sacio_writesac(fsac, header, cctm%adj_src, ier)
   end select
+  write(*, '(a,F8.5)') 'cc_max: ', cctm%cc_max(1)
   
 end program cc_misfit
