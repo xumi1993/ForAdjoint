@@ -10,6 +10,7 @@ module adj_config
     real(kind=dp) :: total_misfit
     integer :: nwin
     integer, dimension(:), allocatable :: imeas
+    logical, dimension(:), allocatable :: select_meas
 
   end type AdjointMeasurement
 

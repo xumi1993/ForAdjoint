@@ -8,7 +8,6 @@ module cc_tt_misfit
   type, extends(AdjointMeasurement) :: CCTTMisfit
     real(kind=dp), dimension(:), allocatable :: tshift, dlna, sigma_dt, sigma_dlna, &
                                                 misfit_p, misfit_q, cc_max
-    logical, dimension(:), allocatable :: select_meas
   contains
     procedure :: calc_adjoint_source, cc_measure_select
     procedure :: initialize
@@ -112,6 +111,7 @@ contains
     allocate(this%imeas(this%nwin))
     this%select_meas = .true.
     this%misfits = 0.0_dp
+    this%total_misfit = 0.0_dp
 
   end subroutine initialize
 
