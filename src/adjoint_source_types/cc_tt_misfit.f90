@@ -121,8 +121,6 @@ contains
     integer, intent(in) :: iwin
 
     ! cc_max = cc_max_coef(d, s)
-    print *, CC_MIN, TSHIFT_MIN, TSHIFT_MAX, DLNA_MIN, DLNA_MAX
-    print *, this%cc_max(iwin), this%tshift(iwin), this%dlna(iwin)
     if ((this%cc_max(iwin) < CC_MIN) .or. (this%tshift(iwin) < TSHIFT_MIN) &
                                      .or. (this%tshift(iwin) > TSHIFT_MAX) &
                                      .or. (this%dlna(iwin) < DLNA_MIN) &
