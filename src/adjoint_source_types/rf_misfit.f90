@@ -119,7 +119,7 @@ contains
     allocate(this%imeas(this%nwin))
     if (allocated(this%select_meas)) deallocate(this%select_meas)
     allocate(this%select_meas(this%nwin))
-    if (allocated(erross)) deallocate(this%errors)
+    if (allocated(this%errors)) deallocate(this%errors)
     allocate(this%errors(this%nwin))
     this%total_misfit = 0.0_dp
     this%imeas = IMEAS_RF
