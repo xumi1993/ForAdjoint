@@ -6,8 +6,8 @@ module cc_tt_misfit
   implicit none
 
   type, extends(AdjointMeasurement) :: CCTTMisfit
-    real(kind=dp), dimension(:), allocatable :: tshift, dlna, sigma_dt, sigma_dlna, &
-                                                misfit_p, misfit_q, cc_max
+    real(kind=dp), private, dimension(:), allocatable :: tshift, dlna, sigma_dt, sigma_dlna, &
+                                            misfit_p, misfit_q, cc_max
   contains
     procedure :: calc_adjoint_source, cc_measure_select
     procedure, private :: initialize
@@ -72,10 +72,14 @@ contains
         case(2) ! CC-TT
           this%total_misfit = this%total_misfit + this%misfit_p(iwin)
           this%misfits(iwin) = this%misfit_p(iwin)
+          this%residuals(iwin) = this%tshift(iwin)
+          this%errors(iwin) = this%sigma_dt(iwin)
           this%adj_src(nb:ne) = adj_tw_p
         case(3) ! CC-DLNA
           this%total_misfit = this%total_misfit + this%misfit_q(iwin)
           this%misfits(iwin) = this%misfit_q(iwin)
+          this%residuals(iwin) = this%dlna(iwin)
+          this%errors(iwin) = this%sigma_dlna(iwin)
           this%adj_src(nb:ne) = adj_tw_q
       end select
 
@@ -98,6 +102,8 @@ contains
     if (allocated(this%cc_max)) deallocate(this%cc_max)
     if (allocated(this%select_meas)) deallocate(this%select_meas)
     if (allocated(this%imeas)) deallocate(this%imeas)
+    if (allocated(this%residuals)) deallocate(this%residuals)
+    if (allocated(this%errors)) deallocate(this%errors)
 
     allocate(this%misfits(this%nwin))
     allocate(this%tshift(this%nwin))
@@ -109,6 +115,8 @@ contains
     allocate(this%cc_max(this%nwin))
     allocate(this%select_meas(this%nwin))
     allocate(this%imeas(this%nwin))
+    allocate(this%residuals(this%nwin))
+    allocate(this%errors(this%nwin))
     this%select_meas = .true.
     this%misfits = 0.0_dp
     this%total_misfit = 0.0_dp

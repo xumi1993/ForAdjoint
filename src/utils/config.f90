@@ -13,6 +13,7 @@ module constants
   integer, parameter :: N_MEASUREMENT = 5
   integer, parameter :: NCHI = 3*(N_MEASUREMENT-1) + 8
   real(kind=dp), parameter :: PI = 3.141592653589793_dp
+  integer, parameter :: IMEAS_RF = 11
 
 end module constants
 

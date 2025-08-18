@@ -1,4 +1,5 @@
 module waveform_misfit
+  use adj_config
   use config
   use signal
   implicit none
@@ -37,7 +38,6 @@ contains
 
     ! loop over windows
     do iwin = 1, this%nwin
-      this%imeas(iwin) = 1 ! Waveform diff
       call get_window_info(windows(iwin,:), dt, nb, ne, nlen_win)
       s = syn(nb:ne)
       d = dat(nb:ne)
@@ -51,8 +51,9 @@ contains
       call window_taper(adj_tw, taper_percentage, itaper_type)
 
       ! calculate waveform misfit and adjoint source
-      misfit = 0.5_dp * simpson((s - d)**2) * dt
+      misfit = 0.5_dp * simpson((s - d)**2, dt)
       this%misfits(iwin) = misfit
+      this%residuals(iwin) = sum(s - d) / nlen_win
       this%total_misfit = this%total_misfit + misfit
       this%adj_src(nb:ne) = adj_tw
 
@@ -71,8 +72,10 @@ contains
     allocate(this%imeas(this%nwin))
     if (allocated(this%select_meas)) deallocate(this%select_meas)
     allocate(this%select_meas(this%nwin))
+    if (allocated(this%residuals)) deallocate(this%residuals)
+    allocate(this%residuals(this%nwin))
     this%misfits = 0.0_dp
-    this%imeas = 0
+    this%imeas = 1
     this%select_meas = .true.
     this%total_misfit = 0.0_dp
 

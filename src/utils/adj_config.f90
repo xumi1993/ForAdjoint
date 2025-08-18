@@ -6,7 +6,7 @@ module adj_config
   type :: AdjointMeasurement
     real(kind=dp), dimension(:), allocatable :: adj_src
     real(kind=dp), dimension(:,:), allocatable :: window_chi
-    real(kind=dp), dimension(:), allocatable :: dat, syn, misfits
+    real(kind=dp), dimension(:), allocatable :: misfits, residuals, errors
     real(kind=dp) :: total_misfit
     integer :: nwin
     integer, dimension(:), allocatable :: imeas
@@ -22,6 +22,6 @@ module adj_config
   integer :: itaper_type=4, imeasure_type=1, lnpt=15, min_cycle_in_window=3, &
               num_taper=5
   ! itaper_type: 1=Hanning, 2=Hamming, 3=cos, 4=cos^10
-  ! imeasure_type: 1=Wavefrom-diff, 2=CC-TT, 3=CC-DLNA, 4=CC-TT-MT, 5=CC-DLNA-MT
+  ! imeasure_type: 1=Wavefrom-diff, 2=CC-TT, 3=CC-DLNA, 4=CC-TT-MT, 5=CC-DLNA-MT, 11=RF
 
 end module adj_config
