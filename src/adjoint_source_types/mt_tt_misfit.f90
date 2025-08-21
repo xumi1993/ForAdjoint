@@ -2,20 +2,23 @@ module mt_tt_misfit
   use config
   use signal
   use adj_config
+  use fftpack
 
   implicit none
 
   type, extends(AdjointMeasurement) :: MTTTMisfit
     real(kind=dp), private, dimension(:), allocatable :: tshift, dlna, sigma_dt, sigma_dlna, &
                                             misfit_p, misfit_q, cc_max
-    real(kind=dp) :: dt
-    integer :: nlen_f
+    real(kind=dp) :: dt, tlen
+    integer :: nlen_f, nlen
     logical :: is_mtm
   contains
-    procedure :: calc_adjoint_source, check_time_series_acceptability
-    procedure, private :: initialize
+    procedure :: calc_adjoint_source
+    procedure, private :: initialize, check_time_series_acceptability, &
+                          prepare_data_for_mtm, calculate_freq_limits
   end type MTTTMisfit
 
+  type(fft_cls), private :: fft_obj
 contains
 
   subroutine calc_adjoint_source(this, dat, syn, dt, windows)
@@ -24,7 +27,7 @@ contains
     real(kind=dp), intent(in) :: dt
     real(kind=dp), dimension(:,:), intent(in) :: windows
     real(kind=dp), dimension(:), allocatable :: s, d, adj_tw_p, adj_tw_q
-    integer :: iwin, nlen, nb, ne, nlen_win
+    integer :: iwin, nb, ne, nlen_win
     logical :: is_mtm
 
 
@@ -40,9 +43,10 @@ contains
 
     this%nlen_f = 2 ** lnpt
     this%dt = dt
-    nlen = size(dat)
+    this%nlen = size(dat)
+    this%tlen = this%nlen * dt
     if (allocated(this%adj_src)) deallocate(this%adj_src)
-    allocate(this%adj_src(nlen))
+    allocate(this%adj_src(this%nlen))
     this%adj_src = 0.0_dp
 
     !loop over windows
@@ -65,20 +69,122 @@ contains
     end do
   end subroutine calc_adjoint_source
 
-  function check_time_series_acceptability(this, iwin, nlen_win) result(is_acceptable)
+  function check_time_series_acceptability(this, iwin, nlen_w) result(is_acceptable)
     class(MTTTMisfit), intent(in) :: this
-    integer, intent(in) :: nlen_win, iwin
+    integer, intent(in) :: nlen_w, iwin
     logical :: is_acceptable
 
     ! Check if the time shift is within acceptable limits
     if (this%tshift(iwin) <= this%dt) then
       is_acceptable = .false.
-    elseif (min_cycle_in_window * min_period > nlen_win) then
+    elseif (min_cycle_in_window * min_period > nlen_w) then
       is_acceptable = .false.
     else
       is_acceptable = .true.
     end if
   end function check_time_series_acceptability
+
+  subroutine prepare_data_for_mtm(this, d, iwin, window, data, is_acceptable)
+    class(MTTTMisfit), intent(inout) :: this
+    real(kind=dp), dimension(:), intent(in) :: d, window
+    integer, intent(in) :: iwin
+    integer :: nb, ne, ishift, nb_d, ne_d, nlen_d, nlen_w
+    real(kind=dp), dimension(:), intent(out), allocatable :: data
+    logical, intent(out) :: is_acceptable
+
+    ! Prepare data for MTM analysis
+    call get_window_info(window, this%dt, nb, ne, nlen_w)
+    ishift = int(this%tshift(iwin) / this%dt)
+
+    nb_d = max(1, nb + ishift)
+    ne_d = min(this%nlen, ne + ishift)
+    nlen_d = ne_d - nb_d + 1
+
+    if (nlen_d == nlen_w) then
+      ! If the data length matches the window length, use it directly
+      data = d(nb_d:ne_d)
+      data = data * exp(-this%dlna(iwin))
+      call window_taper(data, taper_percentage, itaper_type)
+      is_acceptable = .true.
+    else
+      is_acceptable = .false.
+    end if
+  end subroutine prepare_data_for_mtm
+
+  subroutine calculate_freq_limits(this, df, nfreq_min, nfreq_max, is_acceptable)
+    class(MTTTMisfit), intent(inout) :: this
+    real(kind=dp), intent(in) :: df
+    integer, intent(out) :: nfreq_min, nfreq_max
+    logical, intent(out) :: is_acceptable
+    complex(kind=dp), dimension(:), allocatable :: s_spec
+    real(kind=dp) :: ampmax, scaled_wl, half_taper_bandwidth, &
+                     chosen_bandwidth
+    integer :: fnum, i_ampmax, ifreq_min, ifreq_max, nlen_win, iw
+    logical :: is_search
+
+    ! calculate frequency limits for MTM analysis
+    fnum = int(this%nlen_f / 2) + 1
+    s_spec = fft_obj%fft(this%adj_src, this%nlen_f) * this%dt
+
+    ! Calculate the frequency limits based on the sampling rate and window length
+    ampmax = maxval(abs(s_spec))
+    i_ampmax = maxloc(abs(s_spec), dim=1)
+
+    ! Scale the maximum amplitude to the water threshold
+    scaled_wl = water_threshold * ampmax
+
+    ! Find the frequency index corresponding to the maximum amplitude
+    ifreq_min = int(1.0_dp / (max_period * df))
+    ifreq_max = int(1.0_dp / (min_period * df))
+
+    ! get the frequency limits
+    nfreq_max = fnum
+    is_search = .true.
+    do iw = 1, fnum
+      if (iw <= i_ampmax) cycle
+      call search_frequency_limit(is_search, iw, nfreq_max, s_spec, scaled_wl, 10)
+    end do
+    ! Make sure `nfreq_max` does not go beyond the Nyquist frequency
+    nfreq_max = min(nfreq_max, ifreq_max, int(1.0_dp / (2.0_dp * this%dt) / df))
+
+    nfreq_min = 1
+    is_search = .true.
+    do iw = fnum, 1, -1
+      if (iw >= i_ampmax) cycle
+      call search_frequency_limit(is_search, iw, nfreq_min, s_spec, scaled_wl, 10)
+    end do
+    ! Make sure `nfreq_min` does not go below the minimum frequency
+    nfreq_min = max(nfreq_min, ifreq_min, int(min_cycle_in_window / this%tlen / df))
+
+    half_taper_bandwidth = mt_nw / (4.0_dp * this%tlen)
+    chosen_bandwidth = (nfreq_max - nfreq_min) * df
+    if (chosen_bandwidth < half_taper_bandwidth) then
+      is_acceptable = .false.
+    else
+      is_acceptable = .true.
+    end if
+
+  end subroutine calculate_freq_limits
+
+  subroutine search_frequency_limit(is_search, index, nfreq_limit, spectra, water_threshold, c)
+    integer, intent(in) :: index          ! index of the frequency to check
+    integer, intent(in) :: c              ! scaling factor
+    integer, intent(inout) :: nfreq_limit ! frequency limit index
+    real(kind=dp), intent(in) :: water_threshold ! water threshold value
+    complex(kind=dp), intent(in) :: spectra(:)     ! spectrum data
+    logical, intent(inout) :: is_search   ! search flag
+
+    if (abs(spectra(index)) < water_threshold .and. is_search) then
+      is_search   = .false.
+      nfreq_limit = index
+    end if
+
+    if (abs(spectra(index)) > c * water_threshold .and. .not. is_search) then
+      is_search   = .true.
+      nfreq_limit = index
+    end if
+
+  end subroutine search_frequency_limit
 
   subroutine initialize(this)
     class(MTTTMisfit), intent(inout) :: this

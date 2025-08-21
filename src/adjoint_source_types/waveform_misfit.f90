@@ -75,7 +75,7 @@ contains
     if (allocated(this%residuals)) deallocate(this%residuals)
     allocate(this%residuals(this%nwin))
     this%misfits = 0.0_dp
-    this%imeas = 1
+    this%imeas = IMEAS_WAVEFORM
     this%select_meas = .true.
     this%total_misfit = 0.0_dp
 

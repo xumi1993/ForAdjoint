@@ -13,7 +13,15 @@ module constants
   integer, parameter :: N_MEASUREMENT = 5
   integer, parameter :: NCHI = 3*(N_MEASUREMENT-1) + 8
   real(kind=dp), parameter :: PI = 3.141592653589793_dp
-  integer, parameter :: IMEAS_RF = 11
+
+  ! Measurement types
+  integer, parameter :: IMEAS_WAVEFORM = 1
+  integer, parameter :: IMEAS_WAVEFORM_CONV = 2
+  integer, parameter :: IMEAS_RF = 3
+  integer, parameter :: IMEAS_CC_TT = 11
+  integer, parameter :: IMEAS_CC_DLNA = 12
+  integer, parameter :: IMEAS_CC_TT_MT = 13
+  integer, parameter :: IMEAS_CC_DLNA_MT = 14
 
 end module constants
 

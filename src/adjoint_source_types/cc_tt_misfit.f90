@@ -39,7 +39,6 @@ contains
 
     ! loop over windows
     do iwin = 1, this%nwin
-      this%imeas(iwin) = 2 ! CC-TT
       call get_window_info(windows(iwin,:), dt, nb, ne, nlen_win)
       s = syn(nb:ne)
       d = dat(nb:ne)
@@ -70,12 +69,14 @@ contains
 
       select case (imeasure_type)
         case(2) ! CC-TT
+          this%imeas(iwin) = IMEAS_CC_TT ! CC-TT
           this%total_misfit = this%total_misfit + this%misfit_p(iwin)
           this%misfits(iwin) = this%misfit_p(iwin)
           this%residuals(iwin) = this%tshift(iwin)
           this%errors(iwin) = this%sigma_dt(iwin)
           this%adj_src(nb:ne) = adj_tw_p
         case(3) ! CC-DLNA
+          this%imeas(iwin) = IMEAS_CC_DLNA ! CC-DLNA
           this%total_misfit = this%total_misfit + this%misfit_q(iwin)
           this%misfits(iwin) = this%misfit_q(iwin)
           this%residuals(iwin) = this%dlna(iwin)
