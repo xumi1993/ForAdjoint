@@ -14,15 +14,15 @@ module waveform_conv_misfit
 contains
   subroutine calc_adjoint_source(this, dat_r, dat_z, syn_r, syn_z, dt, window)
     class(WaveformConvMisfit), intent(inout) :: this
-    real(kind=dp), dimension(:), intent(in) :: dat, syn
+    real(kind=dp), dimension(:), intent(in) :: dat_r, dat_z, syn_r, syn_z
     real(kind=dp), intent(in) :: dt
-    real(kind=dp), dimension(:), intent(in) :: windows
+    real(kind=dp), dimension(:), intent(in) :: window
     real(kind=dp), dimension(:), allocatable :: sr, sz, dr, dz, c1, c2, &
                                                 adj_tw_r, adj_tw_z, conv_diff
-    integer :: lnen_win, nlen
+    integer :: nlen_win, nlen
 
     this%nwin = 1
-    nlen = size(dat)
+    nlen = size(dat_r)
     if (allocated(this%adj_src_r)) deallocate(this%adj_src_r)
     if (allocated(this%adj_src_z)) deallocate(this%adj_src_z)
     allocate(this%adj_src_r(nlen))
@@ -31,12 +31,16 @@ contains
     this%adj_src_z = 0.0_dp
 
     call get_window_info(window, dt, nb, ne, nlen_win)
-    s = syn(nb:ne)
-    d = dat(nb:ne)
+    sr = syn_r(nb:ne)
+    dr = dat_r(nb:ne)
+    sz = syn_z(nb:ne)
+    dz = dat_z(nb:ne)
 
     ! taper the windows
-    call window_taper(s, taper_percentage, itaper_type)
-    call window_taper(d, taper_percentage, itaper_type)
+    call window_taper(sr, taper_percentage, itaper_type)
+    call window_taper(dr, taper_percentage, itaper_type)
+    call window_taper(sz, taper_percentage, itaper_type)
+    call window_taper(dz, taper_percentage, itaper_type)
 
     ! calculate adjoint sources
     call myconvolution_dp(sr, dz, c1, 0)

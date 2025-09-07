@@ -509,4 +509,94 @@ contains
 
   end subroutine
 
+  subroutine process_cycle_skipping(phi_w, nfreq_min, nfreq_max, wvec, &
+                                  nlen_f, phase_step, verbose)
+    !
+    ! Check for cycle skipping by looking at the smoothness of phi
+    !
+    ! Arguments:
+    !   phi_w      - phase anomaly from transfer functions (real array)
+    !   nfreq_max  - maximum frequency for suitable MTM measurement (integer)
+    !   nfreq_min  - minimum frequency for suitable MTM measurement (integer)
+    !   wvec       - angular frequency array from DFT sample frequencies (complex array)
+    !   nlen_f     - length of frequency arrays (integer)
+    !   phase_step - maximum step for cycle skip correction (real, optional)
+    !
+    implicit none
+    
+    ! Arguments
+    integer, intent(in) :: nfreq_max, nfreq_min, nlen_f
+    real(kind=dp), intent(inout) :: phi_w(nlen_f)
+    complex(kind=dp), intent(in) :: wvec(nlen_f)
+    real(kind=dp), intent(in), optional :: phase_step
+    logical, intent(in), optional :: verbose
+    
+    ! Local variables
+    integer :: iw, i
+    real(kind=dp) :: smth0, smth1, smth2
+    real(kind=dp) :: phase_diff, temp_period
+    real(kind=dp) :: phase_step_use
+    logical :: verbose_use
+
+
+    ! Set default phase_step if not provided
+    if (present(phase_step)) then
+        phase_step_use = phase_step
+    else
+        phase_step_use = 1.5_dp
+    endif
+
+    if (present(verbose)) then
+        verbose_use = verbose
+    else
+        verbose_use = .false.
+    end if
+    
+    ! Main loop for cycle skipping detection and correction
+    do iw = nfreq_min + 2, nfreq_max - 1 
+        
+      ! Calculate smoothness measures
+      smth0 = abs(phi_w(iw + 1) + phi_w(iw - 1) - 2.0_dp * phi_w(iw))
+      smth1 = abs((phi_w(iw + 1) + 2.0_dp * pi) + phi_w(iw - 1) - 2.0_dp * phi_w(iw))
+      smth2 = abs((phi_w(iw + 1) - 2.0_dp * pi) + phi_w(iw - 1) - 2.0_dp * phi_w(iw))
+      
+      ! Calculate phase difference
+      phase_diff = phi_w(iw) - phi_w(iw + 1)
+      
+      ! Check if phase difference exceeds threshold
+      if (abs(phase_diff) > phase_step_use) then
+          
+        ! Calculate period for logging (optional)
+        temp_period = 2.0_dp * pi / wvec(iw)
+        
+        ! Apply +2π correction if smth1 is smallest
+        if (smth1 < smth0 .and. smth1 < smth2) then
+          ! Optional: print warning message
+          if (verbose_use) then
+            write(*,*) '2pi phase shift at', iw, 'T=', temp_period, 'diff=', phase_diff
+          end if
+
+          ! Apply correction: phi_w[iw+1:nfreq_max] += 2*pi
+          do i = iw + 1, nfreq_max
+            phi_w(i) = phi_w(i) + 2.0_dp * pi
+          end do
+        endif
+        
+        ! Apply -2π correction if smth2 is smallest
+        if (smth2 < smth0 .and. smth2 < smth1) then
+          ! Optional: print warning message
+          if (verbose_use) then
+            write(*,*) '-2pi phase shift at', iw, 'T=', temp_period, 'diff=', phase_diff
+          end if
+
+          ! Apply correction: phi_w[iw+1:nfreq_max] -= 2*pi
+          do i = iw + 1, nfreq_max
+            phi_w(i) = phi_w(i) - 2.0_dp * pi
+          end do
+        endif
+      endif
+    end do
+    
+end subroutine process_cycle_skipping
+
 end module signal

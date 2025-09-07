@@ -27,7 +27,8 @@ endif()
 # compile src files
 file(GLOB utils_sources "src/utils/*.f90")
 file(GLOB adjoint_sources "src/adjoint_source_types/*.f90")
-add_library(foradjoint STATIC ${utils_sources} ${adjoint_sources})
+file(GLOB mt_sources "src/mtspec/*.f90")
+add_library(foradjoint STATIC ${utils_sources} ${adjoint_sources} ${mt_sources})
 
 # add example executables
 add_subdirectory(examples)
