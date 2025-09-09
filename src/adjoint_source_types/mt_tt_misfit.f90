@@ -15,7 +15,8 @@ module mt_tt_misfit
   contains
     procedure :: calc_adjoint_source
     procedure, private :: initialize, check_time_series_acceptability, &
-                          prepare_data_for_mtm, calculate_freq_limits
+                          prepare_data_for_mtm, calculate_freq_limits, &
+                          calculate_multitaper
   end type MTTTMisfit
 
   type(fft_cls), private :: fft_obj
@@ -26,9 +27,13 @@ contains
     real(kind=dp), dimension(:), intent(in) :: dat, syn
     real(kind=dp), intent(in) :: dt
     real(kind=dp), dimension(:,:), intent(in) :: windows
-    real(kind=dp), dimension(:), allocatable :: s, d, adj_tw_p, adj_tw_q
-    integer :: iwin, nb, ne, nlen_win
+    real(kind=dp), dimension(:,:), allocatable :: tapers
+    real(kind=dp), dimension(:), allocatable :: s, d, adj_tw_p, adj_tw_q, freq, wvec, &
+                                                ey1, ey2, phi_mtm, abs_mtm, dtau_mtm, dlna_mtm
+    real(kind=dp) :: df
+    integer :: iwin, nb, ne, nlen_win, nfreq_min, nfreq_max
     logical :: is_mtm
+    type(fft_cls) :: fftins
 
 
     ! num of measurements
@@ -66,6 +71,31 @@ contains
       call calc_cc_shift(d, s, dt, dt_sigma_min, dlna_sigma_min, &
                          this%tshift(iwin), this%dlna(iwin), &
                          this%sigma_dt(iwin), this%sigma_dlna(iwin))
+
+      do while (is_mtm)
+        ! prepare data for MTM
+        is_mtm = this%check_time_series_acceptability(iwin, nlen_win)
+        if (.not. is_mtm) exit
+
+        call this%prepare_data_for_mtm(d, iwin, windows(iwin,:), is_mtm)
+        if (.not. is_mtm) exit
+
+        freq = fftins%fftfreq(this%nlen_f, dt)
+        df = freq(2) - freq(1)
+        wvec = 2.0_dp * PI * freq
+
+        ! calculate frequency limits
+        call this%calculate_freq_limits(df, nfreq_min, nfreq_max, is_mtm)
+        if (.not. is_mtm) exit
+
+        ! calculate multitaper transfer function and measurements
+        call staper(nlen_win, num_taper, tapers, this%nlen_f, ey1, ey2)
+        tapers = tapers * dsqrt(dble(nlen_win))
+        call this%calculate_multitaper(d, s, tapers, wvec, nfreq_min, nfreq_max, &
+                                      this%tshift(iwin), this%dlna(iwin), &
+                                      phi_mtm, abs_mtm, dtau_mtm, dlna_mtm)
+
+      end do
     end do
   end subroutine calc_adjoint_source
 
@@ -85,9 +115,8 @@ contains
     ! dlna_w: derivative of log amplitude with respect to frequency
     
     class(MTTTMisfit), intent(inout) :: this
-    real(kind=dp), dimension(:), intent(in) :: d, s
+    real(kind=dp), dimension(:), intent(in) :: d, s, wvec
     real(kind=dp), dimension(:,:), intent(in) :: tapers
-    complex(kind=dp), dimension(:), intent(in) :: wvec
     integer, intent(in) :: nfreq_min, nfreq_max
     real(kind=dp), intent(in) :: cc_tshift, cc_dlna
     real(kind=dp), dimension(:), allocatable, intent(out) :: phi_w, abs_w, dtau_w, dlna_w
@@ -170,12 +199,12 @@ contains
     end if
   end function check_time_series_acceptability
 
-  subroutine prepare_data_for_mtm(this, d, iwin, window, data, is_acceptable)
+  subroutine prepare_data_for_mtm(this, d, iwin, window, is_acceptable)
     class(MTTTMisfit), intent(inout) :: this
-    real(kind=dp), dimension(:), intent(in) :: d, window
+    real(kind=dp), dimension(:), intent(inout) :: d
+    real(kind=dp), dimension(:), intent(in) :: window
     integer, intent(in) :: iwin
     integer :: nb, ne, ishift, nb_d, ne_d, nlen_d, nlen_w
-    real(kind=dp), dimension(:), intent(out), allocatable :: data
     logical, intent(out) :: is_acceptable
 
     ! Prepare data for MTM analysis
@@ -188,9 +217,9 @@ contains
 
     if (nlen_d == nlen_w) then
       ! If the data length matches the window length, use it directly
-      data = d(nb_d:ne_d)
-      data = data * exp(-this%dlna(iwin))
-      call window_taper(data, taper_percentage, itaper_type)
+      d(1:nlen_w) = d(nb_d:ne_d)
+      d = d * exp(-this%dlna(iwin))
+      call window_taper(d, taper_percentage, itaper_type)
       is_acceptable = .true.
     else
       is_acceptable = .false.

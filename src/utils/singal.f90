@@ -527,7 +527,7 @@ contains
     ! Arguments
     integer, intent(in) :: nfreq_max, nfreq_min, nlen_f
     real(kind=dp), intent(inout) :: phi_w(nlen_f)
-    complex(kind=dp), intent(in) :: wvec(nlen_f)
+    real(kind=dp), intent(in) :: wvec(nlen_f)
     real(kind=dp), intent(in), optional :: phase_step
     logical, intent(in), optional :: verbose
     

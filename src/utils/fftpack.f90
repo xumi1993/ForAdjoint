@@ -5,6 +5,7 @@ module fftpack
         contains
             procedure :: fft
             procedure :: ifft
+            procedure :: fftfreq
     end type fft_cls
 
 contains
@@ -67,4 +68,25 @@ contains
             kmax=istep
         enddo
     end subroutine fft_raw
+
+    function fftfreq(this, n, d) result(freqs)
+        class(fft_cls) :: this
+        integer, intent(in) :: n         
+        double precision, intent(in) :: d        
+        double precision, allocatable :: freqs(:) 
+
+        integer :: i, N_half
+
+        allocate(freqs(n))
+        N_half = n / 2
+
+        do i = 1, N_half
+            freqs(i) = (i - 1) / (n * d)
+        end do
+
+        do i = N_half + 1, n
+            freqs(i) = - (n - i + 1) / (n * d)
+        end do
+
+    end function fftfreq
 end module
