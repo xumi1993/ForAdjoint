@@ -21,7 +21,10 @@ module adj_config
                     TSHIFT_MAX=5.0_dp, DLNA_MIN=-1.5_dp, DLNA_MAX=1.5_dp, CC_MIN=0.8_dp
   integer :: itaper_type=4, imeasure_type=1, lnpt=15, min_cycle_in_window=3, &
               num_taper=5
+  logical :: use_cc_error=.false., use_mt_error=.true.
   ! itaper_type: 1=Hanning, 2=Hamming, 3=cos, 4=cos^10
   ! imeasure_type: 1=Wavefrom-diff, 2=CC-TT, 3=CC-DLNA, 4=CC-TT-MT, 5=CC-DLNA-MT, 11=RF
+  ! use_cc_error: use cross-correlation error estimates for weighting
+  ! use_mt_error: use multitaper error estimates for weighting
 
 end module adj_config

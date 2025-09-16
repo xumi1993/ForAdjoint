@@ -6,7 +6,7 @@ module cc_tt_misfit
   implicit none
 
   type, extends(AdjointMeasurement) :: CCTTMisfit
-    real(kind=dp), private, dimension(:), allocatable :: tshift, dlna, sigma_dt, sigma_dlna, &
+    real(kind=dp), dimension(:), allocatable :: tshift, dlna, sigma_dt, sigma_dlna, &
                                             misfit_p, misfit_q, cc_max
   contains
     procedure :: calc_adjoint_source, cc_measure_select

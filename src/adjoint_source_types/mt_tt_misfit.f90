@@ -3,12 +3,12 @@ module mt_tt_misfit
   use signal
   use adj_config
   use fftpack
+  use cc_tt_misfit, only: CCTTMisfit
+  use cross_correlate
 
   implicit none
 
-  type, extends(AdjointMeasurement) :: MTTTMisfit
-    real(kind=dp), private, dimension(:), allocatable :: tshift, dlna, sigma_dt, sigma_dlna, &
-                                            misfit_p, misfit_q, cc_max
+  type, extends(CCTTMisfit) :: MTTTMisfit
     real(kind=dp) :: dt, tlen
     integer :: nlen_f, nlen
     logical :: is_mtm
@@ -16,7 +16,9 @@ module mt_tt_misfit
     procedure :: calc_adjoint_source
     procedure, private :: initialize, check_time_series_acceptability, &
                           prepare_data_for_mtm, calculate_freq_limits, &
-                          calculate_multitaper
+                          calculate_multitaper, calculate_mt_adjsrc, &
+                          calculate_mt_error, check_mtm_time_shift_acceptability, &
+                          calculate_freq_domain_taper
   end type MTTTMisfit
 
   type(fft_cls), private :: fft_obj
@@ -29,8 +31,10 @@ contains
     real(kind=dp), dimension(:,:), intent(in) :: windows
     real(kind=dp), dimension(:,:), allocatable :: tapers
     real(kind=dp), dimension(:), allocatable :: s, d, adj_tw_p, adj_tw_q, freq, wvec, &
-                                                ey1, ey2, phi_mtm, abs_mtm, dtau_mtm, dlna_mtm
-    real(kind=dp) :: df
+                                                ey1, ey2, phi_mtm, abs_mtm, dtau_mtm, dlna_mtm,&
+                                                err_phi, err_abs, err_dtau, err_dlna, &
+                                                wp_w, wq_w
+    real(kind=dp) :: df, misfit_p, misfit_q
     integer :: iwin, nb, ne, nlen_win, nfreq_min, nfreq_max
     logical :: is_mtm
     type(fft_cls) :: fftins
@@ -71,6 +75,10 @@ contains
       call calc_cc_shift(d, s, dt, dt_sigma_min, dlna_sigma_min, &
                          this%tshift(iwin), this%dlna(iwin), &
                          this%sigma_dt(iwin), this%sigma_dlna(iwin))
+      
+      this%cc_max(iwin) = cc_max_coef(d, s)
+      call this%cc_measure_select(iwin)
+      if (.not. this%select_meas(iwin)) cycle
 
       do while (is_mtm)
         ! prepare data for MTM
@@ -94,8 +102,65 @@ contains
         call this%calculate_multitaper(d, s, tapers, wvec, nfreq_min, nfreq_max, &
                                       this%tshift(iwin), this%dlna(iwin), &
                                       phi_mtm, abs_mtm, dtau_mtm, dlna_mtm)
+        
+        call this%calculate_mt_error(d, s, tapers, wvec, nfreq_min, nfreq_max, &
+                                     this%tshift(iwin), this%dlna(iwin), phi_mtm, abs_mtm, dtau_mtm, dlna_mtm, &
+                                     err_phi, err_abs, err_dtau, err_dlna)
 
-      end do
+        ! check MTM measurement quality before calculating adjoint source
+        is_mtm = this%check_mtm_time_shift_acceptability(nfreq_min, nfreq_max, df, &
+                                                         this%tshift(iwin), dtau_mtm, err_dtau)
+        if (.not. is_mtm) exit
+
+        call this%calculate_freq_domain_taper(nfreq_min, nfreq_max, df, &
+                                              dtau_mtm, dlna_mtm, &
+                                              this%sigma_dt(iwin), this%sigma_dlna(iwin), &
+                                              err_dtau, err_dlna, wp_w, wq_w)
+        
+        ! Store the misfits for this window
+        this%misfit_p(iwin) = simpson(dtau_mtm ** 2 * wp_w, df)
+        this%misfit_q(iwin) = simpson(dlna_mtm ** 2 * wq_w, df)
+
+        ! calculate multitaper phase shift misfit and adjoint source
+        call this%calculate_mt_adjsrc(s, tapers, nfreq_min, nfreq_max, &
+                                      dtau_mtm, dlna_mtm, wp_w, wq_w, adj_tw_p, adj_tw_q)
+        this%imeas(iwin) = imeasure_type  
+        exit
+
+      end do ! end of is_mtm loop
+
+      if (.not. is_mtm) then
+        ! calculate adjoint source
+        call calc_cc_adjsrc(s, this%tshift(iwin), this%dlna(iwin), dt, &
+                            this%sigma_dt(iwin), this%sigma_dlna(iwin), &
+                            this%misfit_p(iwin), this%misfit_q(iwin), &
+                            adj_tw_p, adj_tw_q)
+        select case (imeasure_type)
+          case(IMEAS_CC_TT_MT) ! MT-CC-TT (phase shift)
+            this%imeas(iwin) = IMEAS_CC_TT
+          case(IMEAS_CC_DLNA_MT) ! MT-CC-DLNA (amplitude)
+            this%imeas(iwin) = IMEAS_CC_DLNA
+        end select
+      endif
+
+      call window_taper(adj_tw_p, taper_percentage, itaper_type)
+      call window_taper(adj_tw_q, taper_percentage, itaper_type)
+
+      ! select measurements based on measurement type and add to total adjoint source
+      select case (imeasure_type)
+        case(IMEAS_CC_TT_MT) ! MT-CC-TT (phase shift)
+          this%total_misfit = this%total_misfit + this%misfit_p(iwin)
+          this%misfits(iwin) = this%misfit_p(iwin)
+          this%residuals(iwin) = this%tshift(iwin)
+          this%errors(iwin) = this%sigma_dt(iwin)
+          this%adj_src(nb:ne) = this%adj_src(nb:ne) + adj_tw_p(:)
+        case(IMEAS_CC_DLNA_MT) ! MT-CC-DLNA (amplitude)
+          this%total_misfit = this%total_misfit + this%misfit_q(iwin)
+          this%misfits(iwin) = this%misfit_q(iwin)
+          this%residuals(iwin) = this%dlna(iwin)
+          this%errors(iwin) = this%sigma_dlna(iwin)
+          this%adj_src(nb:ne) = this%adj_src(nb:ne) + adj_tw_q(:)
+      end select
     end do
   end subroutine calc_adjoint_source
 
@@ -183,6 +248,271 @@ contains
     dlna_w(nfreq_min:nfreq_max) = log(abs_w(nfreq_min:nfreq_max)) + cc_dlna
 
   end subroutine calculate_multitaper
+
+  subroutine calculate_mt_error(this, d, s, tapers, wvec, nfreq_min, nfreq_max, &
+                               cc_tshift, cc_dlna, phi_mtm, abs_mtm, dtau_mtm, dlna_mtm, &
+                               err_phi, err_abs, err_dtau, err_dlna)
+    ! Calculate multitaper error with Jackknife MT estimates
+    ! Uses jackknife method by systematically leaving out each observation
+    
+    class(MTTTMisfit), intent(inout) :: this
+    real(kind=dp), dimension(:), intent(in) :: d, s, wvec
+    real(kind=dp), dimension(:,:), intent(in) :: tapers
+    integer, intent(in) :: nfreq_min, nfreq_max
+    real(kind=dp), intent(in) :: cc_tshift, cc_dlna
+    real(kind=dp), dimension(:), intent(in) :: phi_mtm, abs_mtm, dtau_mtm, dlna_mtm
+    real(kind=dp), dimension(:), allocatable, intent(out) :: err_phi, err_abs, err_dtau, err_dlna
+    
+    real(kind=dp), dimension(:,:), allocatable :: phi_mul, abs_mul, dtau_mul, dlna_mul, tapers_om
+    real(kind=dp), dimension(:), allocatable :: ephi_ave, eabs_ave, edtau_ave, edlna_ave
+    real(kind=dp), dimension(:), allocatable :: phi_om, abs_om, dtau_om, dlna_om
+    integer :: nlen_t, ntaper, itaper, i
+    
+    nlen_t = size(d)
+    ntaper = size(tapers, 2)
+    
+    ! Initialize arrays
+    allocate(phi_mul(this%nlen_f, ntaper), abs_mul(this%nlen_f, ntaper))
+    allocate(dtau_mul(this%nlen_f, ntaper), dlna_mul(this%nlen_f, ntaper))
+    allocate(ephi_ave(this%nlen_f), eabs_ave(this%nlen_f))
+    allocate(edtau_ave(this%nlen_f), edlna_ave(this%nlen_f))
+    allocate(err_phi(this%nlen_f), err_abs(this%nlen_f))
+    allocate(err_dtau(this%nlen_f), err_dlna(this%nlen_f))
+    allocate(tapers_om(nlen_t, ntaper-1))
+    
+    phi_mul = 0.0_dp
+    abs_mul = 0.0_dp
+    dtau_mul = 0.0_dp
+    dlna_mul = 0.0_dp
+    ephi_ave = 0.0_dp
+    eabs_ave = 0.0_dp
+    edtau_ave = 0.0_dp
+    edlna_ave = 0.0_dp
+    err_phi = 0.0_dp
+    err_abs = 0.0_dp
+    err_dtau = 0.0_dp
+    err_dlna = 0.0_dp
+    
+    ! Jackknife loop: leave out one taper at a time
+    do itaper = 1, ntaper
+      ! Create taper array with one taper removed
+      if (itaper == 1) then
+        tapers_om(:, 1:ntaper-1) = tapers(:, 2:ntaper)
+      else if (itaper == ntaper) then
+        tapers_om(:, 1:ntaper-1) = tapers(:, 1:ntaper-1)
+      else
+        tapers_om(:, 1:itaper-1) = tapers(:, 1:itaper-1)
+        tapers_om(:, itaper:ntaper-1) = tapers(:, itaper+1:ntaper)
+      end if
+      
+      ! Recalculate MT measurements with reduced taper set
+      call this%calculate_multitaper(d, s, tapers_om, wvec, nfreq_min, nfreq_max, &
+                                    cc_tshift, cc_dlna, phi_om, abs_om, dtau_om, dlna_om)
+      
+      ! Store jackknife estimates
+      phi_mul(:, itaper) = phi_om(:)
+      abs_mul(:, itaper) = abs_om(:)
+      dtau_mul(:, itaper) = dtau_om(:)
+      dlna_mul(:, itaper) = dlna_om(:)
+      
+      ! Error estimation using jackknife formula
+      ephi_ave(nfreq_min:nfreq_max) = ephi_ave(nfreq_min:nfreq_max) + &
+        ntaper * phi_mtm(nfreq_min:nfreq_max) - &
+        (ntaper - 1) * phi_mul(nfreq_min:nfreq_max, itaper)
+        
+      eabs_ave(nfreq_min:nfreq_max) = eabs_ave(nfreq_min:nfreq_max) + &
+        ntaper * abs_mtm(nfreq_min:nfreq_max) - &
+        (ntaper - 1) * abs_mul(nfreq_min:nfreq_max, itaper)
+        
+      edtau_ave(nfreq_min:nfreq_max) = edtau_ave(nfreq_min:nfreq_max) + &
+        ntaper * dtau_mtm(nfreq_min:nfreq_max) - &
+        (ntaper - 1) * dtau_mul(nfreq_min:nfreq_max, itaper)
+        
+      edlna_ave(nfreq_min:nfreq_max) = edlna_ave(nfreq_min:nfreq_max) + &
+        ntaper * dlna_mtm(nfreq_min:nfreq_max) - &
+        (ntaper - 1) * dlna_mul(nfreq_min:nfreq_max, itaper)
+    end do
+    
+    ! Take average over each taper band
+    ephi_ave = ephi_ave / ntaper
+    eabs_ave = eabs_ave / ntaper
+    edtau_ave = edtau_ave / ntaper
+    edlna_ave = edlna_ave / ntaper
+    
+    ! Calculate deviation
+    do itaper = 1, ntaper
+      err_phi(nfreq_min:nfreq_max) = err_phi(nfreq_min:nfreq_max) + &
+        (phi_mul(nfreq_min:nfreq_max, itaper) - ephi_ave(nfreq_min:nfreq_max))**2
+      err_abs(nfreq_min:nfreq_max) = err_abs(nfreq_min:nfreq_max) + &
+        (abs_mul(nfreq_min:nfreq_max, itaper) - eabs_ave(nfreq_min:nfreq_max))**2
+      err_dtau(nfreq_min:nfreq_max) = err_dtau(nfreq_min:nfreq_max) + &
+        (dtau_mul(nfreq_min:nfreq_max, itaper) - edtau_ave(nfreq_min:nfreq_max))**2
+      err_dlna(nfreq_min:nfreq_max) = err_dlna(nfreq_min:nfreq_max) + &
+        (dlna_mul(nfreq_min:nfreq_max, itaper) - edlna_ave(nfreq_min:nfreq_max))**2
+    end do
+    
+    ! Calculate standard deviation
+    err_phi(nfreq_min:nfreq_max) = sqrt(err_phi(nfreq_min:nfreq_max) / (ntaper * (ntaper - 1)))
+    err_abs(nfreq_min:nfreq_max) = sqrt(err_abs(nfreq_min:nfreq_max) / (ntaper * (ntaper - 1)))
+    err_dtau(nfreq_min:nfreq_max) = sqrt(err_dtau(nfreq_min:nfreq_max) / (ntaper * (ntaper - 1)))
+    err_dlna(nfreq_min:nfreq_max) = sqrt(err_dlna(nfreq_min:nfreq_max) / (ntaper * (ntaper - 1)))
+    
+  end subroutine calculate_mt_error
+
+  subroutine calculate_mt_adjsrc(this, s, tapers, nfreq_min, nfreq_max, &
+                                dtau_mtm, dlna_mtm, wp_w, wq_w, adj_p, adj_q)
+    ! Calculate the adjoint source for a multitaper measurement, which
+    ! tapers synthetics in various windowed frequency-dependent tapers and
+    ! scales them by phase dependent travel time measurements (which
+    ! incorporate the observed data).
+    
+    class(MTTTMisfit), intent(inout) :: this
+    real(kind=dp), dimension(:), intent(in) :: s, dtau_mtm, dlna_mtm, wp_w, wq_w
+    real(kind=dp), dimension(:,:), intent(in) :: tapers
+    integer, intent(in) :: nfreq_min, nfreq_max
+    real(kind=dp), dimension(:), allocatable, intent(out) :: adj_p, adj_q
+    
+    real(kind=dp), dimension(:), allocatable :: taper, s_t, s_tv, fp_t, fq_t
+    real(kind=dp), dimension(:), allocatable :: p_wt, q_wt, taper_full
+    complex(kind=dp), dimension(:), allocatable :: bottom_p, bottom_q
+    complex(kind=dp), dimension(:,:), allocatable :: s_tw, s_tvw
+    complex(kind=dp), dimension(:), allocatable :: p_w, q_w
+    complex, dimension(:), allocatable :: p_wt_c, q_wt_c
+    integer :: nlen_t, ntaper, itaper, i
+    type(fft_cls) :: fftins
+    
+    nlen_t = size(s)
+    ntaper = size(tapers, 2)
+    
+    ! Allocate arrays
+    allocate(fp_t(nlen_t), fq_t(nlen_t))
+    allocate(bottom_p(this%nlen_f), bottom_q(this%nlen_f))
+    allocate(s_tw(this%nlen_f, ntaper), s_tvw(this%nlen_f, ntaper))
+    allocate(p_w(this%nlen_f), q_w(this%nlen_f))
+    allocate(p_wt_c(this%nlen_f), q_wt_c(this%nlen_f))
+    allocate(p_wt(this%nlen_f), q_wt(this%nlen_f))
+    allocate(taper_full(this%nlen_f))
+    allocate(adj_p(nlen_t), adj_q(nlen_t))
+    
+    ! Start piecing together transfer functions that will be applied to synthetics
+    bottom_p = (0.0_dp, 0.0_dp)
+    bottom_q = (0.0_dp, 0.0_dp)
+    s_tw = (0.0_dp, 0.0_dp)
+    s_tvw = (0.0_dp, 0.0_dp)
+    
+    ! Construct the bottom term of the adjoint formula which requires
+    ! summed contributions from each of the taper bands
+    do itaper = 1, ntaper
+      taper_full = 0.0_dp
+      taper_full(1:nlen_t) = tapers(1:nlen_t, itaper)
+      
+      ! Taper synthetics (s_t) and take the derivative (s_tv)
+      s_t = s * taper_full(1:nlen_t)
+      s_tv = gradient(s_t, this%dt)
+      
+      ! Apply FFT to tapered measurements to get to freq. domain.
+      s_tw(:, itaper) = fftins%fft(s_t, this%nlen_f) * this%dt
+      s_tvw(:, itaper) = fftins%fft(s_tv, this%nlen_f) * this%dt
+      
+      ! Calculate bottom term of the adjoint equation
+      bottom_p = bottom_p + s_tvw(:, itaper) * conjg(s_tvw(:, itaper))
+      bottom_q = bottom_q + s_tw(:, itaper) * conjg(s_tw(:, itaper))
+    end do
+    
+    ! Now we generate the adjoint sources using each of the tapers
+    fp_t = 0.0_dp
+    fq_t = 0.0_dp
+    
+    do itaper = 1, ntaper
+      taper_full = 0.0_dp
+      taper_full(1:nlen_t) = tapers(1:nlen_t, itaper)
+      
+      ! Calculate the full adjoint terms p_w, q_w
+      p_w = (0.0_dp, 0.0_dp)
+      q_w = (0.0_dp, 0.0_dp)
+      
+      do i = nfreq_min, nfreq_max
+        if (abs(bottom_p(i)) > 0.0_dp) then
+          p_w(i) = s_tvw(i, itaper) / bottom_p(i)
+        end if
+        if (abs(bottom_q(i)) > 0.0_dp) then
+          q_w(i) = -s_tw(i, itaper) / bottom_q(i)
+        end if
+      end do
+      
+      ! Weight the adjoint terms by the phase + amplitude measurements
+      do i = 1, this%nlen_f
+        p_w(i) = p_w(i) * dtau_mtm(i) * wp_w(i)  ! phase
+        q_w(i) = q_w(i) * dlna_mtm(i) * wq_w(i)  ! amplitude
+      end do
+      
+      ! Inverse FFT of weighted adjoint to get back to the time domain
+      p_wt_c = cmplx(p_w)
+      q_wt_c = cmplx(q_w)
+      
+      p_wt = real(fftins%ifft(p_wt_c, this%nlen_f)) * 2.0_dp / this%dt
+      q_wt = real(fftins%ifft(q_wt_c, this%nlen_f)) * 2.0_dp / this%dt
+      
+      ! Taper adjoint term before adding it back to full adj source
+      fp_t = fp_t + p_wt(1:nlen_t) * taper_full(1:nlen_t)
+      fq_t = fq_t + q_wt(1:nlen_t) * taper_full(1:nlen_t)
+    end do
+    
+    ! Return the adjoint sources
+    adj_p = fp_t
+    adj_q = fq_t
+    
+  end subroutine calculate_mt_adjsrc
+
+  function check_mtm_time_shift_acceptability(this, nfreq_min, nfreq_max, df, &
+                                             cc_tshift, dtau_mtm, err_dtau) result(is_mtm)
+    ! Check MTM time shift measurements to see if they are within allowable
+    ! bounds set by the config. If any of the phases used in MTM do not
+    ! meet criteria, we will fall back to CC measurement.
+    
+    class(MTTTMisfit), intent(inout) :: this
+    integer, intent(in) :: nfreq_min, nfreq_max
+    real(kind=dp), intent(in) :: df, cc_tshift
+    real(kind=dp), dimension(:), intent(in) :: dtau_mtm, err_dtau
+    logical :: is_mtm
+    
+    real(kind=dp) :: wave_period, max_dt_allowed, max_err_allowed
+    integer :: j
+    
+    ! True unless set False
+    is_mtm = .true.
+    
+    ! If any MTM measurements is out of the reasonable range, switch to CC
+    do j = nfreq_min, nfreq_max
+      if (j * df > 0.0_dp) then
+        wave_period = 1.0_dp / (j * df)
+        
+        ! dt larger than 1/dt_fac of the wave period
+        max_dt_allowed = wave_period / dt_fac
+        if (abs(dtau_mtm(j)) > max_dt_allowed) then
+          write(*,*) 'INFO: reject MTM: dt measurement is too large at frequency', j
+          is_mtm = .false.
+          exit
+        end if
+        
+        ! Error larger than 1/err_fac of wave period
+        max_err_allowed = wave_period / err_fac
+        if (err_dtau(j) > max_err_allowed) then
+          write(*,*) 'DEBUG: reject MTM: dt error is too large at frequency', j
+          is_mtm = .false.
+          exit
+        end if
+        
+        ! dt larger than the maximum allowable time shift
+        if (abs(dtau_mtm(j)) > dt_max_scale * abs(cc_tshift)) then
+          write(*,*) 'DEBUG: reject MTM: dt is larger than maximum allowable time shift at frequency', j
+          is_mtm = .false.
+          exit
+        end if
+      end if
+    end do
+    
+  end function check_mtm_time_shift_acceptability
     
   function check_time_series_acceptability(this, iwin, nlen_w) result(is_acceptable)
     class(MTTTMisfit), intent(in) :: this
@@ -301,6 +631,90 @@ contains
 
   end subroutine search_frequency_limit
 
+  subroutine calculate_freq_domain_taper(this, nfreq_min, nfreq_max, df, &
+                                        dtau_mtm, dlna_mtm, err_dt_cc, err_dlna_cc, &
+                                        err_dtau_mt, err_dlna_mt, wp_w, wq_w)
+    ! Calculate frequency domain taper weighted by misfit (either CC or MTM)
+    ! Frequency-domain tapers are based on adjusted frequency band and error estimation.
+    ! They are not one of the filtering processes that needs to be applied to the 
+    ! adjoint source but rather a frequency domain weighting function for adjoint 
+    ! source and misfit function.
+    
+    class(MTTTMisfit), intent(inout) :: this
+    integer, intent(in) :: nfreq_min, nfreq_max
+    real(kind=dp), intent(in) :: df, err_dt_cc, err_dlna_cc
+    real(kind=dp), dimension(:), intent(in) :: dtau_mtm, dlna_mtm, err_dtau_mt, err_dlna_mt
+    real(kind=dp), dimension(:), intent(out) :: wp_w, wq_w
+    
+    real(kind=dp), dimension(:), allocatable :: w_taper, win_taper
+    real(kind=dp), dimension(:), allocatable :: err_dtau_mt_work, err_dlna_mt_work
+    real(kind=dp) :: ffac, dtau_wtr, dlna_wtr
+    integer :: win_taper_len, i
+    
+    ! Initialize arrays
+    allocate(w_taper(this%nlen_f))
+    allocate(err_dtau_mt_work(this%nlen_f))
+    allocate(err_dlna_mt_work(this%nlen_f))
+    w_taper = 0.0_dp
+    err_dtau_mt_work = err_dtau_mt
+    err_dlna_mt_work = err_dlna_mt
+    
+    ! Create frequency domain taper
+    win_taper_len = nfreq_max - nfreq_min
+    allocate(win_taper(win_taper_len))
+    win_taper = 1.0_dp
+    
+    ! Create cosine taper over frequency range
+    call window_taper(win_taper, 1.0_dp, 3) ! cos taper with 100% tapering
+    w_taper(nfreq_min:nfreq_max-1) = win_taper(1:win_taper_len)
+    
+    ! Normalization factor, factor 2 is needed for integration -inf to inf
+    ffac = 2.0_dp * df * sum(w_taper(nfreq_min:nfreq_max-1))
+    
+    write(*,*) 'DEBUG: frequency bound (idx): [', nfreq_min, ',', nfreq_max-1, ']', &
+               ' (Hz) [', df * (nfreq_min - 1), ',', df * nfreq_max, ']'
+    write(*,*) 'DEBUG: frequency domain taper normalization coeff:', ffac
+    write(*,*) 'DEBUG: frequency domain sampling length df=', df
+    
+    if (ffac <= 0.0_dp) then
+      write(*,*) 'WARNING: frequency band too narrow:'
+      write(*,*) 'fmin=', nfreq_min, ', fmax=', nfreq_max, ', ffac=', ffac
+    end if
+    
+    ! Normalized, tapered window in the frequency domain
+    wp_w = w_taper / ffac
+    wq_w = w_taper / ffac
+    
+    ! Choose whether to scale by CC error or by calculated MT errors
+    if (use_cc_error) then
+      wp_w = wp_w / (err_dt_cc ** 2)
+      wq_w = wq_w / (err_dlna_cc ** 2)
+    else if (use_mt_error) then
+      ! Calculate water threshold for MT measurements
+      dtau_wtr = water_threshold * sum(abs(dtau_mtm(nfreq_min:nfreq_max-1))) / &
+                 (nfreq_max - nfreq_min)
+      dlna_wtr = water_threshold * sum(abs(dlna_mtm(nfreq_min:nfreq_max-1))) / &
+                 (nfreq_max - nfreq_min)
+      
+      ! Apply water threshold to error estimates where needed
+      do i = nfreq_min, nfreq_max-1
+        if (err_dtau_mt_work(i) < dtau_wtr) then
+          err_dtau_mt_work(i) = err_dtau_mt_work(i) + dtau_wtr
+        end if
+        if (err_dlna_mt_work(i) < dlna_wtr) then
+          err_dlna_mt_work(i) = err_dlna_mt_work(i) + dlna_wtr
+        end if
+      end do
+      
+      ! Scale by multitaper error estimates
+      do i = nfreq_min, nfreq_max-1
+        wp_w(i) = wp_w(i) / (err_dtau_mt_work(i) ** 2)
+        wq_w(i) = wq_w(i) / (err_dlna_mt_work(i) ** 2)
+      end do
+    end if
+    
+  end subroutine calculate_freq_domain_taper
+
   subroutine initialize(this)
     class(MTTTMisfit), intent(inout) :: this
 
@@ -334,6 +748,16 @@ contains
     this%select_meas = .true.
     this%misfits = 0.0_dp
     this%total_misfit = 0.0_dp
+    
+    ! Set measurement type based on imeasure_type
+    select case (imeasure_type)
+      case(4) ! MT-CC-TT
+        this%imeas = IMEAS_CC_TT_MT
+      case(5) ! MT-CC-DLNA  
+        this%imeas = IMEAS_CC_DLNA_MT
+      case default
+        this%imeas = IMEAS_CC_TT_MT ! default to phase shift
+    end select
 
   end subroutine initialize
 end module mt_tt_misfit
