@@ -5,6 +5,7 @@ module mt_tt_misfit
   use fftpack
   use cc_tt_misfit, only: CCTTMisfit
   use cross_correlate
+  use dpss
 
   implicit none
 
@@ -31,7 +32,7 @@ contains
     real(kind=dp), dimension(:,:), intent(in) :: windows
     real(kind=dp), dimension(:,:), allocatable :: tapers
     real(kind=dp), dimension(:), allocatable :: s, d, adj_tw_p, adj_tw_q, freq, wvec, &
-                                                ey1, ey2, phi_mtm, abs_mtm, dtau_mtm, dlna_mtm,&
+                                                eig, phi_mtm, abs_mtm, dtau_mtm, dlna_mtm,&
                                                 err_phi, err_abs, err_dtau, err_dlna, &
                                                 wp_w, wq_w
     real(kind=dp) :: df, misfit_p, misfit_q
@@ -45,10 +46,11 @@ contains
       write(*,*) 'Error: windows must have two columns (start and end times)'
       error stop
     end if
-    ! allocate measurement arrays
-    call this%initialize()
 
     this%nwin = size(windows, 1)
+    
+    ! allocate measurement arrays
+    call this%initialize()
 
     this%nlen_f = 2 ** lnpt
     this%dt = dt
@@ -79,34 +81,48 @@ contains
       this%cc_max(iwin) = cc_max_coef(d, s)
       call this%cc_measure_select(iwin)
       if (.not. this%select_meas(iwin)) cycle
-
       do while (is_mtm)
         ! prepare data for MTM
         is_mtm = this%check_time_series_acceptability(iwin, nlen_win)
-        if (.not. is_mtm) exit
+        if (.not. is_mtm) then
+          write(*,*) 'Warning: Window ', iwin, ' does not meet time series criteria for MTM.'
+          exit
+        end if
 
-        call this%prepare_data_for_mtm(d, iwin, windows(iwin,:), is_mtm)
-        if (.not. is_mtm) exit
+        call this%prepare_data_for_mtm(dat, iwin, windows(iwin,:), d, is_mtm)
+        if (.not. is_mtm) then
+          write(*,*) 'Warning: Window ', iwin, ' could not be prepared for MTM.'          
+          exit
+        end if
 
         freq = fftins%fftfreq(this%nlen_f, dt)
         df = freq(2) - freq(1)
         wvec = 2.0_dp * PI * freq
 
         ! calculate frequency limits
-        call this%calculate_freq_limits(df, nfreq_min, nfreq_max, is_mtm)
-        if (.not. is_mtm) exit
+        call this%calculate_freq_limits(syn, df, nfreq_min, nfreq_max, is_mtm)
+        if (.not. is_mtm) then
+          write(*,*) 'Warning: Window ', iwin, ' does not meet frequency criteria for MTM.'
+          exit
+        end if
 
         ! calculate multitaper transfer function and measurements
-        call staper(nlen_win, num_taper, tapers, this%nlen_f, ey1, ey2)
-        tapers = tapers * dsqrt(dble(nlen_win))
+        call dpss_windows(nlen_win, mt_nw, num_taper, tapers, eig)
+        tapers = transpose(tapers) * dsqrt(dble(nlen_win))
+
         call this%calculate_multitaper(d, s, tapers, wvec, nfreq_min, nfreq_max, &
                                       this%tshift(iwin), this%dlna(iwin), &
                                       phi_mtm, abs_mtm, dtau_mtm, dlna_mtm)
         
-        call this%calculate_mt_error(d, s, tapers, wvec, nfreq_min, nfreq_max, &
-                                     this%tshift(iwin), this%dlna(iwin), phi_mtm, abs_mtm, dtau_mtm, dlna_mtm, &
-                                     err_phi, err_abs, err_dtau, err_dlna)
-
+        if (use_mt_error) then 
+          call this%calculate_mt_error(d, s, tapers, wvec, nfreq_min, nfreq_max, &
+                                      this%tshift(iwin), this%dlna(iwin), phi_mtm, abs_mtm, dtau_mtm, dlna_mtm, &
+                                      err_phi, err_abs, err_dtau, err_dlna)
+        else
+          allocate(err_dtau(this%nlen_f), err_dlna(this%nlen_f))
+          err_dtau = 0.0_dp
+          err_dlna = 0.0_dp
+        end if
         ! check MTM measurement quality before calculating adjoint source
         is_mtm = this%check_mtm_time_shift_acceptability(nfreq_min, nfreq_max, df, &
                                                          this%tshift(iwin), dtau_mtm, err_dtau)
@@ -116,7 +132,6 @@ contains
                                               dtau_mtm, dlna_mtm, &
                                               this%sigma_dt(iwin), this%sigma_dlna(iwin), &
                                               err_dtau, err_dlna, wp_w, wq_w)
-        
         ! Store the misfits for this window
         this%misfit_p(iwin) = simpson(dtau_mtm ** 2 * wp_w, df)
         this%misfit_q(iwin) = simpson(dlna_mtm ** 2 * wq_w, df)
@@ -195,16 +210,22 @@ contains
     ntaper = size(tapers, 2)
     fnum = int(this%nlen_f / 2) + 1
 
-    allocate(top_tf(this%nlen_f), bot_tf(this%nlen_f))
+    allocate(top_tf(this%nlen_f), bot_tf(this%nlen_f), trans_func(this%nlen_f))
+    allocate(d_t(this%nlen_f), s_t(this%nlen_f))
     top_tf = (0.0_dp, 0.0_dp)
     bot_tf = (0.0_dp, 0.0_dp)
+    trans_func = (0.0_dp, 0.0_dp)  ! Initialize trans_func
 
     do itaper = 1, ntaper
       taper = tapers(1:nlen_t, itaper)
 
       ! Apply taper to data and synthetics
-      d_t = d * taper
-      s_t = s * taper
+      d_t = 0.0_dp
+      s_t = 0.0_dp
+      d_t(1:nlen_t) = d * taper
+      s_t(1:nlen_t) = s * taper
+
+      ! Prepare zero-padded arrays for FFT
 
       d_tw = fftins%fft(d_t, this%nlen_f) * this%dt
       s_tw = fftins%fft(s_t, this%nlen_f) * this%dt
@@ -215,7 +236,7 @@ contains
     enddo
 
     ! Calculate the transfer function with water level stabilization
-    wlevel = transfunc_waterlevel**2 * maxval(abs(bot_tf(1:fnum)))
+    wlevel = maxval(abs(bot_tf(1:fnum))) * transfunc_waterlevel**2
 
     ! Calculate the transfer function
     do i = nfreq_min, nfreq_max
@@ -266,7 +287,7 @@ contains
     real(kind=dp), dimension(:,:), allocatable :: phi_mul, abs_mul, dtau_mul, dlna_mul, tapers_om
     real(kind=dp), dimension(:), allocatable :: ephi_ave, eabs_ave, edtau_ave, edlna_ave
     real(kind=dp), dimension(:), allocatable :: phi_om, abs_om, dtau_om, dlna_om
-    integer :: nlen_t, ntaper, itaper, i
+    integer :: nlen_t, ntaper, itaper, i, j, icol
     
     nlen_t = size(d)
     ntaper = size(tapers, 2)
@@ -296,19 +317,18 @@ contains
     ! Jackknife loop: leave out one taper at a time
     do itaper = 1, ntaper
       ! Create taper array with one taper removed
-      if (itaper == 1) then
-        tapers_om(:, 1:ntaper-1) = tapers(:, 2:ntaper)
-      else if (itaper == ntaper) then
-        tapers_om(:, 1:ntaper-1) = tapers(:, 1:ntaper-1)
-      else
-        tapers_om(:, 1:itaper-1) = tapers(:, 1:itaper-1)
-        tapers_om(:, itaper:ntaper-1) = tapers(:, itaper+1:ntaper)
-      end if
+      tapers_om = 0.0_dp
+      icol = 1
+      do j = 1, ntaper
+        if (j /= itaper) then
+          tapers_om(1:this%nlen_f, icol) = tapers(1:this%nlen_f, j)
+          icol = icol + 1
+        end if
+      end do
       
       ! Recalculate MT measurements with reduced taper set
       call this%calculate_multitaper(d, s, tapers_om, wvec, nfreq_min, nfreq_max, &
                                     cc_tshift, cc_dlna, phi_om, abs_om, dtau_om, dlna_om)
-      
       ! Store jackknife estimates
       phi_mul(:, itaper) = phi_om(:)
       abs_mul(:, itaper) = abs_om(:)
@@ -393,6 +413,7 @@ contains
     allocate(p_wt(this%nlen_f), q_wt(this%nlen_f))
     allocate(taper_full(this%nlen_f))
     allocate(adj_p(nlen_t), adj_q(nlen_t))
+    allocate(s_t(this%nlen_f), s_tv(this%nlen_f))
     
     ! Start piecing together transfer functions that will be applied to synthetics
     bottom_p = (0.0_dp, 0.0_dp)
@@ -407,8 +428,10 @@ contains
       taper_full(1:nlen_t) = tapers(1:nlen_t, itaper)
       
       ! Taper synthetics (s_t) and take the derivative (s_tv)
-      s_t = s * taper_full(1:nlen_t)
-      s_tv = gradient(s_t, this%dt)
+      s_t = 0.0_dp
+      s_tv = 0.0_dp
+      s_t(1:nlen_t) = s * taper_full(1:nlen_t)
+      s_tv(1:nlen_t) = gradient(s_t(1:nlen_t), this%dt)
       
       ! Apply FFT to tapered measurements to get to freq. domain.
       s_tw(:, itaper) = fftins%fft(s_t, this%nlen_f) * this%dt
@@ -452,11 +475,12 @@ contains
       
       p_wt = real(fftins%ifft(p_wt_c, this%nlen_f)) * 2.0_dp / this%dt
       q_wt = real(fftins%ifft(q_wt_c, this%nlen_f)) * 2.0_dp / this%dt
-      
+
       ! Taper adjoint term before adding it back to full adj source
       fp_t = fp_t + p_wt(1:nlen_t) * taper_full(1:nlen_t)
       fq_t = fq_t + q_wt(1:nlen_t) * taper_full(1:nlen_t)
     end do
+
     
     ! Return the adjoint sources
     adj_p = fp_t
@@ -520,7 +544,7 @@ contains
     logical :: is_acceptable
 
     ! Check if the time shift is within acceptable limits
-    if (this%tshift(iwin) <= this%dt) then
+    if (abs(this%tshift(iwin)) <= this%dt) then
       is_acceptable = .false.
     elseif (min_cycle_in_window * min_period > nlen_w) then
       is_acceptable = .false.
@@ -529,9 +553,10 @@ contains
     end if
   end function check_time_series_acceptability
 
-  subroutine prepare_data_for_mtm(this, d, iwin, window, is_acceptable)
+  subroutine prepare_data_for_mtm(this, dat, iwin, window, d, is_acceptable)
     class(MTTTMisfit), intent(inout) :: this
-    real(kind=dp), dimension(:), intent(inout) :: d
+    real(kind=dp), dimension(:), intent(out) :: d
+    real(kind=dp), dimension(:), intent(in) :: dat
     real(kind=dp), dimension(:), intent(in) :: window
     integer, intent(in) :: iwin
     integer :: nb, ne, ishift, nb_d, ne_d, nlen_d, nlen_w
@@ -547,59 +572,72 @@ contains
 
     if (nlen_d == nlen_w) then
       ! If the data length matches the window length, use it directly
-      d(1:nlen_w) = d(nb_d:ne_d)
+      d(1:nlen_w) = dat(nb_d:ne_d)
       d = d * exp(-this%dlna(iwin))
       call window_taper(d, taper_percentage, itaper_type)
       is_acceptable = .true.
     else
+      d = dat(nb:ne)
       is_acceptable = .false.
     end if
   end subroutine prepare_data_for_mtm
 
-  subroutine calculate_freq_limits(this, df, nfreq_min, nfreq_max, is_acceptable)
+  subroutine calculate_freq_limits(this, syn, df, nfreq_min, nfreq_max, is_acceptable)
     class(MTTTMisfit), intent(inout) :: this
+    real(kind=dp), dimension(:), intent(in) :: syn
     real(kind=dp), intent(in) :: df
     integer, intent(out) :: nfreq_min, nfreq_max
     logical, intent(out) :: is_acceptable
     complex(kind=dp), dimension(:), allocatable :: s_spec
     real(kind=dp) :: ampmax, scaled_wl, half_taper_bandwidth, &
                      chosen_bandwidth
-    integer :: fnum, i_ampmax, ifreq_min, ifreq_max, nlen_win, iw
+    integer :: fnum, i_ampmax, ifreq_min, ifreq_max, iw
     logical :: is_search
 
-    ! calculate frequency limits for MTM analysis
+    ! calculate frequency limits for MTM analysis using synthetic data
     fnum = int(this%nlen_f / 2) + 1
-    s_spec = fft_obj%fft(this%adj_src, this%nlen_f) * this%dt
+    
+    ! Use synthetic data (not adj_src) to match Python implementation
+    allocate(s_spec(this%nlen_f))
+    s_spec = fft_obj%fft(syn, this%nlen_f) * this%dt
 
     ! Calculate the frequency limits based on the sampling rate and window length
-    ampmax = maxval(abs(s_spec))
-    i_ampmax = maxloc(abs(s_spec), dim=1)
+    ! Only consider the positive frequencies (1:fnum)
+    ampmax = maxval(abs(s_spec(1:fnum)))
+    i_ampmax = maxloc(abs(s_spec(1:fnum)), dim=1)
 
     ! Scale the maximum amplitude to the water threshold
     scaled_wl = water_threshold * ampmax
 
     ! Find the frequency index corresponding to the maximum amplitude
-    ifreq_min = int(1.0_dp / (max_period * df))
-    ifreq_max = int(1.0_dp / (min_period * df))
+    ifreq_min = max(1, int(1.0_dp / (max_period * df)))  ! Ensure minimum is 1
+    ifreq_max = min(fnum, int(1.0_dp / (min_period * df)))  ! Ensure maximum doesn't exceed fnum
 
-    ! get the frequency limits
-    nfreq_max = fnum
+    ! write(*,*) 'DEBUG: fnum=', fnum, ', i_ampmax=', i_ampmax
+    ! write(*,*) 'DEBUG: ifreq_min=', ifreq_min, ', ifreq_max=', ifreq_max
+    ! write(*,*) 'DEBUG: ampmax=', ampmax, ', scaled_wl=', scaled_wl
+
+    ! get the maximum frequency limits
+    nfreq_max = fnum  ! Start from fnum (will be reduced by search)
     is_search = .true.
-    do iw = 1, fnum
-      if (iw <= i_ampmax) cycle
-      call search_frequency_limit(is_search, iw, nfreq_max, s_spec, scaled_wl, 10)
-    end do
-    ! Make sure `nfreq_max` does not go beyond the Nyquist frequency
+    if (i_ampmax < fnum) then  ! Only search if there's space to search
+      do iw = i_ampmax + 1, fnum
+        call search_frequency_limit(is_search, iw, nfreq_max, s_spec, scaled_wl, 10)
+      end do
+    end if
+    ! Make sure `nfreq_max` does not go beyond reasonable limits
     nfreq_max = min(nfreq_max, ifreq_max, int(1.0_dp / (2.0_dp * this%dt) / df))
 
-    nfreq_min = 1
+    ! get the minimum frequency limits  
+    nfreq_min = 1  ! Start from 1 (will be increased by search)
     is_search = .true.
-    do iw = fnum, 1, -1
-      if (iw >= i_ampmax) cycle
-      call search_frequency_limit(is_search, iw, nfreq_min, s_spec, scaled_wl, 10)
-    end do
-    ! Make sure `nfreq_min` does not go below the minimum frequency
-    nfreq_min = max(nfreq_min, ifreq_min, int(min_cycle_in_window / this%tlen / df))
+    if (i_ampmax > 1) then  ! Only search if there's space to search
+      do iw = i_ampmax - 1, 1, -1
+        call search_frequency_limit(is_search, iw, nfreq_min, s_spec, scaled_wl, 10)
+      end do
+    end if
+    ! Make sure `nfreq_min` does not go below reasonable limits
+    nfreq_min = max(nfreq_min, ifreq_min, max(1, int(min_cycle_in_window / this%tlen / df)))
 
     half_taper_bandwidth = mt_nw / (4.0_dp * this%tlen)
     chosen_bandwidth = (nfreq_max - nfreq_min) * df
@@ -613,17 +651,20 @@ contains
 
   subroutine search_frequency_limit(is_search, index, nfreq_limit, spectra, water_threshold, c)
     integer, intent(in) :: index          ! index of the frequency to check
-    integer, intent(in) :: c              ! scaling factor
+    integer, intent(in) :: c              ! scaling factor for water threshold
     integer, intent(inout) :: nfreq_limit ! frequency limit index
     real(kind=dp), intent(in) :: water_threshold ! water threshold value
     complex(kind=dp), intent(in) :: spectra(:)     ! spectrum data
     logical, intent(inout) :: is_search   ! search flag
 
+    ! First condition: stop search if amplitude is below water threshold
     if (abs(spectra(index)) < water_threshold .and. is_search) then
       is_search   = .false.
       nfreq_limit = index
     end if
 
+    ! Second condition: restart search if amplitude is above c * water_threshold  
+    ! This works like a "heating thermostat" as described in Python docstring
     if (abs(spectra(index)) > c * water_threshold .and. .not. is_search) then
       is_search   = .true.
       nfreq_limit = index
@@ -644,7 +685,7 @@ contains
     integer, intent(in) :: nfreq_min, nfreq_max
     real(kind=dp), intent(in) :: df, err_dt_cc, err_dlna_cc
     real(kind=dp), dimension(:), intent(in) :: dtau_mtm, dlna_mtm, err_dtau_mt, err_dlna_mt
-    real(kind=dp), dimension(:), intent(out) :: wp_w, wq_w
+    real(kind=dp), dimension(:), allocatable, intent(out) :: wp_w, wq_w
     
     real(kind=dp), dimension(:), allocatable :: w_taper, win_taper
     real(kind=dp), dimension(:), allocatable :: err_dtau_mt_work, err_dlna_mt_work
@@ -671,15 +712,15 @@ contains
     ! Normalization factor, factor 2 is needed for integration -inf to inf
     ffac = 2.0_dp * df * sum(w_taper(nfreq_min:nfreq_max-1))
     
-    write(*,*) 'DEBUG: frequency bound (idx): [', nfreq_min, ',', nfreq_max-1, ']', &
-               ' (Hz) [', df * (nfreq_min - 1), ',', df * nfreq_max, ']'
-    write(*,*) 'DEBUG: frequency domain taper normalization coeff:', ffac
-    write(*,*) 'DEBUG: frequency domain sampling length df=', df
+    ! write(*,*) 'DEBUG: frequency bound (idx): [', nfreq_min, ',', nfreq_max-1, ']', &
+    !            ' (Hz) [', df * (nfreq_min - 1), ',', df * nfreq_max, ']'
+    ! write(*,*) 'DEBUG: frequency domain taper normalization coeff:', ffac
+    ! write(*,*) 'DEBUG: frequency domain sampling length df=', df
     
-    if (ffac <= 0.0_dp) then
-      write(*,*) 'WARNING: frequency band too narrow:'
-      write(*,*) 'fmin=', nfreq_min, ', fmax=', nfreq_max, ', ffac=', ffac
-    end if
+    ! if (ffac <= 0.0_dp) then
+      ! write(*,*) 'WARNING: frequency band too narrow:'
+      ! write(*,*) 'fmin=', nfreq_min, ', fmax=', nfreq_max, ', ffac=', ffac
+    ! end if
     
     ! Normalized, tapered window in the frequency domain
     wp_w = w_taper / ffac
@@ -697,7 +738,7 @@ contains
                  (nfreq_max - nfreq_min)
       
       ! Apply water threshold to error estimates where needed
-      do i = nfreq_min, nfreq_max-1
+      do i = nfreq_min, nfreq_max
         if (err_dtau_mt_work(i) < dtau_wtr) then
           err_dtau_mt_work(i) = err_dtau_mt_work(i) + dtau_wtr
         end if
@@ -707,7 +748,7 @@ contains
       end do
       
       ! Scale by multitaper error estimates
-      do i = nfreq_min, nfreq_max-1
+      do i = nfreq_min, nfreq_max
         wp_w(i) = wp_w(i) / (err_dtau_mt_work(i) ** 2)
         wq_w(i) = wq_w(i) / (err_dlna_mt_work(i) ** 2)
       end do
@@ -749,15 +790,15 @@ contains
     this%misfits = 0.0_dp
     this%total_misfit = 0.0_dp
     
-    ! Set measurement type based on imeasure_type
-    select case (imeasure_type)
-      case(4) ! MT-CC-TT
-        this%imeas = IMEAS_CC_TT_MT
-      case(5) ! MT-CC-DLNA  
-        this%imeas = IMEAS_CC_DLNA_MT
-      case default
-        this%imeas = IMEAS_CC_TT_MT ! default to phase shift
-    end select
+    ! ! Set measurement type based on imeasure_type
+    ! select case (imeasure_type)
+    !   case() ! MT-CC-TT
+    !     this%imeas = IMEAS_CC_TT_MT
+    !   case(5) ! MT-CC-DLNA  
+    !     this%imeas = IMEAS_CC_DLNA_MT
+    !   case default
+    !     this%imeas = IMEAS_CC_TT_MT ! default to phase shift
+    ! end select
 
   end subroutine initialize
 end module mt_tt_misfit

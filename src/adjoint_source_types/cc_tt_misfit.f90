@@ -68,14 +68,14 @@ contains
       call window_taper(adj_tw_q, taper_percentage, itaper_type)
 
       select case (imeasure_type)
-        case(2) ! CC-TT
+        case(IMEAS_CC_TT) ! CC-TT
           this%imeas(iwin) = IMEAS_CC_TT ! CC-TT
           this%total_misfit = this%total_misfit + this%misfit_p(iwin)
           this%misfits(iwin) = this%misfit_p(iwin)
           this%residuals(iwin) = this%tshift(iwin)
           this%errors(iwin) = this%sigma_dt(iwin)
           this%adj_src(nb:ne) = adj_tw_p
-        case(3) ! CC-DLNA
+        case(IMEAS_CC_DLNA) ! CC-DLNA
           this%imeas(iwin) = IMEAS_CC_DLNA ! CC-DLNA
           this%total_misfit = this%total_misfit + this%misfit_q(iwin)
           this%misfits(iwin) = this%misfit_q(iwin)

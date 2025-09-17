@@ -7,6 +7,14 @@ project(${CMAKE_PROJECT_NAME}, VERSION ${project_version} LANGUAGES Fortran)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 set(CMAKE_Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/modules)
 
+# Find LAPACK library
+find_package(LAPACK REQUIRED)
+if(LAPACK_FOUND)
+    message(STATUS "LAPACK libraries: ${LAPACK_LIBRARIES}")
+else()
+    message(FATAL_ERROR "LAPACK not found!")
+endif()
+
 if ("${CMAKE_FORTRAN_COMPILER_ID}" MATCHES "GNU")
   set(CMAKE_Fortran_FLAGS "-std=f2008 -O3 -fimplicit-none -fmax-errors=10 -pedantic -pedantic-errors -Waliasing -Wampersand -Wcharacter-truncation -Wline-truncation -Wsurprising -Wno-tabs -Wunderflow -ffpe-trap=invalid,zero,overflow -Wunused -finline-functions -Wno-argument-mismatch")
   set(CMAKE_Fortran_FLAGS_DEBUG "-g -O0 -ggdb -fbacktrace -fbounds-check")
@@ -29,6 +37,9 @@ file(GLOB utils_sources "src/utils/*.f90")
 file(GLOB adjoint_sources "src/adjoint_source_types/*.f90")
 file(GLOB mt_sources "src/mtspec/*.f90")
 add_library(foradjoint STATIC ${utils_sources} ${adjoint_sources} ${mt_sources})
+
+# Link LAPACK to the library
+target_link_libraries(foradjoint ${LAPACK_LIBRARIES})
 
 # add example executables
 add_subdirectory(examples)

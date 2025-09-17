@@ -1,5 +1,6 @@
 program cc_misfit
   use cc_tt_misfit
+  use mt_tt_misfit
   use sacio
 
   implicit none
@@ -14,6 +15,7 @@ program cc_misfit
   integer :: ier, nb, ne
   type(sachead) :: header
   type(CCTTMisfit) :: cctm
+  type(MTTTMisfit) :: mttm
 
   if (command_argument_count() /= 8) then
     write(*,*) 'Usage: cc_misfit fobs fsyn short_p long_p time_min time_max fadj'
@@ -23,7 +25,7 @@ program cc_misfit
     write(*,*) '  long_p: long period of bandpass filter (s)'
     write(*,*) '  time_min: start time of time window (s)'
     write(*,*) '  time_max: end time of time window (s)'
-    write(*,*) '  imeas: measurement type (2: CC-TT, 3: CC-DLNA)'
+    write(*,*) '  imeas: measurement type (11: CC-TT, 12: CC-DLNA, 13: MT-TT, 14: MT-DLNA)'
     write(*,*) '  fadj: output path to adjoint source'
     stop
   end if
@@ -49,6 +51,8 @@ program cc_misfit
   dt = dble(header%delta)
 
   ! filter seismograms
+  min_period = short_p
+  max_period = long_p
   call bandpass_dp(syn, dt, real(1/long_p), real(1/short_p), IORD)
   call bandpass_dp(dat, dt, real(1/long_p), real(1/short_p), IORD)
 
@@ -76,22 +80,40 @@ program cc_misfit
   allocate(windows(1, 2))
   windows(1, 1) = time_min - header%b
   windows(1, 2) = time_max - header%b
-  call cctm%calc_adjoint_source(dat, syn, dt, windows)
+  if (imeasure_type == IMEAS_CC_TT .or. imeasure_type == IMEAS_CC_DLNA) then
+    call cctm%calc_adjoint_source(dat, syn, dt, windows)
+  else if(imeasure_type == IMEAS_CC_TT_MT .or. imeasure_type == IMEAS_CC_DLNA_MT) then
+    print *, 'Using multitaper cross-correlation measurement'
+    call mttm%calc_adjoint_source(dat, syn, dt, windows)
+  end if
 
   select case (imeasure_type)
-    case (2) ! CC-TT
+    case (IMEAS_CC_TT) ! CC-TT
       write(*,'(a,F8.5,a,F8.5)') 'Time shift (s): ', cctm%residuals(1), '+/-', cctm%errors(1)
       write(*,'(a,F8.5)') 'Time shift misfit: ', cctm%misfits(1)
       ! write adjoint source to SAC file
       fsac = trim(fadj)//'/'//trim(header%knetwk)//'.'//trim(header%kstnm) &
          //'BXZ.ccdt.sac'
       call sacio_writesac(fsac, header, cctm%adj_src, ier)
-    case (3) ! CC-DLNA
+    case (IMEAS_CC_DLNA) ! CC-DLNA
       write(*,'(a,F8.5,a,F8.5)') 'Amplitude anomaly (ln): ', cctm%residuals(1), '+/-', cctm%errors(1)
       write(*,'(a,F8.5)') 'Amplitude anomaly misfit: ', cctm%misfits(1)
       fsac = trim(fadj)//'/'//trim(header%knetwk)//'.'//trim(header%kstnm) &
          //'BXZ.ccdlna.sac'
       call sacio_writesac(fsac, header, cctm%adj_src, ier)
+    case (IMEAS_CC_TT_MT) ! MT-TT
+      write(*,'(a,F8.5,a,F8.5)') 'Multitaper time shift (s): ', mttm%residuals(1), '+/-', mttm%errors(1)
+      write(*,'(a,F8.5)') 'Multitaper time shift misfit: ', mttm%misfits(1)
+      ! write adjoint source to SAC file
+      fsac = trim(fadj)//'/'//trim(header%knetwk)//'.'//trim(header%kstnm) &
+         //'BXZ.mtdt.sac'
+      call sacio_writesac(fsac, header, mttm%adj_src, ier)
+    case (IMEAS_CC_DLNA_MT) ! MT-DLNA
+      write(*,'(a,F8.5,a,F8.5)') 'Multitaper amplitude anomaly (ln): ', mttm%residuals(1), '+/-', mttm%errors(1)
+      write(*,'(a,F8.5)') 'Multitaper amplitude anomaly misfit: ', mttm%misfits(1)
+      fsac = trim(fadj)//'/'//trim(header%knetwk)//'.'//trim(header%kstnm) &
+         //'BXZ.mtdlna.sac'
+      call sacio_writesac(fsac, header, mttm%adj_src, ier)
   end select
   
 end program cc_misfit
