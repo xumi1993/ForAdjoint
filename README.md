@@ -278,7 +278,6 @@ ForAdjoint is designed for:
 
 - **Full Waveform Inversion (FWI)**: High-resolution subsurface imaging
 - **Adjoint Tomography**: Large-scale seismic structure inversion  
-- **Source Inversion**: Earthquake source parameter estimation
 - **Receiver Function Analysis**: Crustal and mantle discontinuity imaging
 
 ## 🤝 Contributing
