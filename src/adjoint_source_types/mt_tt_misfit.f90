@@ -176,6 +176,26 @@ contains
           this%errors(iwin) = this%sigma_dlna(iwin)
           this%adj_src(nb:ne) = this%adj_src(nb:ne) + adj_tw_q(:)
       end select
+      
+      ! deallocate tmp variables
+      if (allocated(freq)) deallocate(freq)
+      if (allocated(s)) deallocate(s)
+      if (allocated(d)) deallocate(d)
+      if (allocated(adj_tw_p)) deallocate(adj_tw_p)
+      if (allocated(adj_tw_q)) deallocate(adj_tw_q)
+      if (allocated(wvec)) deallocate(wvec)
+      if (allocated(eig)) deallocate(eig)
+      if (allocated(phi_mtm)) deallocate(phi_mtm)
+      if (allocated(abs_mtm)) deallocate(abs_mtm)
+      if (allocated(dtau_mtm)) deallocate(dtau_mtm)
+      if (allocated(dlna_mtm)) deallocate(dlna_mtm)
+      if (allocated(err_phi)) deallocate(err_phi)
+      if (allocated(err_abs)) deallocate(err_abs)
+      if (allocated(err_dtau)) deallocate(err_dtau)
+      if (allocated(err_dlna)) deallocate(err_dlna)
+      if (allocated(wp_w)) deallocate(wp_w)
+      if (allocated(wq_w)) deallocate(wq_w)
+      if (allocated(tapers)) deallocate(tapers)
     end do
   end subroutine calc_adjoint_source
 

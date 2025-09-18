@@ -41,7 +41,7 @@
 *.dwo
 
 # jupyter notebooks
-*.ipynb
+./*.ipynb
 *.sac
 
 build/

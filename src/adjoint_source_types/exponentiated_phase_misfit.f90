@@ -25,7 +25,7 @@ contains
     real(kind=dp), dimension(:), allocatable :: s, d, env_s, env_d, hilb_s, hilb_d,&
                                               env_s_wl, env_d_wl, diff_real, diff_imag, &
                                               env_s_wtr_cubic, adj_real, adj_imag
-    ! complex(kind=dp), dimension(:), allocatable :: S, D, R, exp_R
+    complex(kind=dp), dimension(:), allocatable :: h_s, h_d
     real(kind=dp) :: threshold_s, threshold_d
     integer :: iwin, nlen, nb, ne, nlen_win
 
@@ -55,11 +55,13 @@ contains
       call window_taper(d, taper_percentage, itaper_type)
 
       ! calculate envelopes and hilbert transforms
-      env_s = abs(fft_ins%hilbert(s))
-      env_d = abs(fft_ins%hilbert(d))
-      hilb_s = aimag(fft_ins%hilbert(s))
-      hilb_d = aimag(fft_ins%hilbert(d))
-      
+      h_s = fft_ins%hilbert(s)
+      h_d = fft_ins%hilbert(d)
+      env_s = abs(h_s)
+      env_d = abs(h_d)
+      hilb_s = aimag(h_s)
+      hilb_d = aimag(h_d)
+
       ! calculate water level
       threshold_s = wtr_env * maxval(env_s)
       threshold_d = wtr_env * maxval(env_d)
@@ -89,6 +91,10 @@ contains
       call window_taper(adj_imag, taper_percentage, itaper_type)
 
       this%adj_src(nb:ne) = this%adj_src(nb:ne) + adj_real(1:nlen_win) + adj_imag(1:nlen_win)
+
+      deallocate(s, d, h_d, h_s, env_s, env_d, hilb_s, hilb_d)
+      deallocate(env_s_wl, env_d_wl, env_s_wtr_cubic, diff_real, diff_imag)
+      deallocate(adj_imag, adj_real)
     end do
 
   end subroutine calc_adjoint_source

@@ -83,7 +83,7 @@ contains
           this%errors(iwin) = this%sigma_dlna(iwin)
           this%adj_src(nb:ne) = adj_tw_q
       end select
-
+      deallocate(s, d)
     end do
 
   end subroutine calc_adjoint_source

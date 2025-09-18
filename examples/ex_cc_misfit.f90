@@ -93,26 +93,26 @@ program cc_misfit
       write(*,'(a,F8.5)') 'Time shift misfit: ', cctm%misfits(1)
       ! write adjoint source to SAC file
       fsac = trim(fadj)//'/'//trim(header%knetwk)//'.'//trim(header%kstnm) &
-         //'BXZ.ccdt.sac'
+         //'.BXZ.ccdt.sac'
       call sacio_writesac(fsac, header, cctm%adj_src, ier)
     case (IMEAS_CC_DLNA) ! CC-DLNA
       write(*,'(a,F8.5,a,F8.5)') 'Amplitude anomaly (ln): ', cctm%residuals(1), '+/-', cctm%errors(1)
       write(*,'(a,F8.5)') 'Amplitude anomaly misfit: ', cctm%misfits(1)
       fsac = trim(fadj)//'/'//trim(header%knetwk)//'.'//trim(header%kstnm) &
-         //'BXZ.ccdlna.sac'
+         //'.BXZ.ccdlna.sac'
       call sacio_writesac(fsac, header, cctm%adj_src, ier)
     case (IMEAS_CC_TT_MT) ! MT-TT
       write(*,'(a,F8.5,a,F8.5)') 'Multitaper time shift (s): ', mttm%residuals(1), '+/-', mttm%errors(1)
       write(*,'(a,F8.5)') 'Multitaper time shift misfit: ', mttm%misfits(1)
       ! write adjoint source to SAC file
       fsac = trim(fadj)//'/'//trim(header%knetwk)//'.'//trim(header%kstnm) &
-         //'BXZ.mtdt.sac'
+         //'.BXZ.mtdt.sac'
       call sacio_writesac(fsac, header, mttm%adj_src, ier)
     case (IMEAS_CC_DLNA_MT) ! MT-DLNA
       write(*,'(a,F8.5,a,F8.5)') 'Multitaper amplitude anomaly (ln): ', mttm%residuals(1), '+/-', mttm%errors(1)
       write(*,'(a,F8.5)') 'Multitaper amplitude anomaly misfit: ', mttm%misfits(1)
       fsac = trim(fadj)//'/'//trim(header%knetwk)//'.'//trim(header%kstnm) &
-         //'BXZ.mtdlna.sac'
+         //'.BXZ.mtdlna.sac'
       call sacio_writesac(fsac, header, mttm%adj_src, ier)
   end select
   

@@ -114,68 +114,59 @@ contains
         complex(kind=dp), dimension(:), allocatable :: xa ! Analytic signal output
         
         ! Local variables
-        integer :: n, n_input, i
+        integer :: n, n_input, i, nft
         real(kind=dp), dimension(:), allocatable :: x_padded
-        complex(kind=dp), dimension(:), allocatable :: xf, h_weights
+        complex, dimension(:), allocatable :: xf, h_weights
         
         n_input = size(x)
         
         ! Set the FFT size
         if (present(n_opt)) then
-            n = n_opt
+            if (n_opt < n_input) then
+                n = n_input
+            else
+                n = n_opt
+            end if
         else
             n = n_input
         end if
         
-        if (n <= 0) then
-            write(*,*) 'Error: N must be positive'
-            return
-        end if
-        
+        nft = 2**exponent(real(n))
+
         ! Prepare input data with zero padding if necessary
-        allocate(x_padded(n))
+        allocate(x_padded(nft))
         x_padded = 0.0_dp
-        if (n_input <= n) then
-            x_padded(1:n_input) = x(1:n_input)
-        else
-            x_padded(1:n) = x(1:n)
-        end if
+        x_padded(1:n_input) = x(1:n_input)
         
         ! Compute FFT
-        allocate(xf(n))
-        xf = this%fft(x_padded, n)
+        ! allocate(xf(n))
+        xf = this%fft(x_padded, nft)
         
         ! Create Hilbert filter weights
-        allocate(h_weights(n))
-        h_weights = (0.0_dp, 0.0_dp)
+        allocate(h_weights(nft))
+        h_weights = (0.0, 0.0)
         
         if (mod(n, 2) == 0) then
             ! Even length
-            h_weights(1) = (1.0_dp, 0.0_dp)          ! DC component
-            h_weights(n/2 + 1) = (1.0_dp, 0.0_dp)    ! Nyquist frequency
-            do i = 2, n/2
-                h_weights(i) = (2.0_dp, 0.0_dp)      ! Positive frequencies
-            end do
+            h_weights(1) = (1.0, 0.0)          ! DC component
+            h_weights(nft/2 + 1) = (1.0, 0.0)    ! Nyquist frequency
+            h_weights(2: nft/2) = (2.0, 0.0)      ! Positive frequencies
             ! Negative frequencies remain zero
         else
             ! Odd length
-            h_weights(1) = (1.0_dp, 0.0_dp)          ! DC component
-            do i = 2, (n + 1)/2
-                h_weights(i) = (2.0_dp, 0.0_dp)      ! Positive frequencies
-            end do
+            h_weights(1) = (1.0, 0.0)          ! DC component
+            h_weights(2: (nft + 1)/2) = (2.0, 0.0) ! Positive frequencies
             ! Negative frequencies remain zero
         end if
         
         ! Apply Hilbert filter
-        do i = 1, n
-            xf(i) = xf(i) * h_weights(i)
-        end do
+        xf = xf * h_weights
         
         ! Compute inverse FFT to get analytic signal
+        ! xa = this%ifft_complex(xf, n)
+        call fft_raw(nft, xf, +1)
         allocate(xa(n))
-        xa = this%ifft_complex(cmplx(xf, kind=4), n)
-        
-        ! Clean up
+        xa = cmplx(xf(1:n)/real(nft), kind=dp)
         deallocate(x_padded, xf, h_weights)
         
     end function hilbert
