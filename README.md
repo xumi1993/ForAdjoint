@@ -116,7 +116,7 @@ After building, executable tools are available in the `bin/` directory:
 Measures phase and amplitude differences simultaneously using complex-valued approach:
 
 ```math
-χ(d,s) = 1/2 ∫ |d/|d|_w - s/|s|_w|² dt + 1/2 ∫ |H[d]/|d|_w - H[s]/|s|_w|² dt
+\chi = \frac{1}{2} \int \left[ \| \frac{d(t)}{E_d(t)} - \frac{s(t)}{E_s(t)} \| - \| \frac{\mathcal{H\{d(t)\}}}{E_d(t)} - \frac{\mathcal{H\{s(t)\}}}{E_s(t)} \| \right] dt
 ```
 
 **Features:**
@@ -129,6 +129,10 @@ Measures phase and amplitude differences simultaneously using complex-valued app
 
 Uses multitaper method for stable frequency-domain measurements:
 
+```math
+\chi = \frac{1}{2} \sum_{rp} \int W_{P_{rp}}(\omega) \left[ \tau^{obs}_{rp}(\omega) - \tau^{syn}_{rp}(\omega) \right] d\omega
+```
+
 **Features:**
 
 - Multiple orthogonal tapers for spectral estimation
@@ -139,6 +143,10 @@ Uses multitaper method for stable frequency-domain measurements:
 ### 3. Cross-correlation Travel-time Misfit
 
 Classic cross-correlation based travel-time measurement:
+
+```math
+\chi = \frac{1}{2} \sum \left[ \frac{T^{obs} - T^{syn}}{\sigma \Delta T} \right] d\omega
+```
 
 **Features:**
 
@@ -151,18 +159,34 @@ Classic cross-correlation based travel-time measurement:
 Simple L2 norm waveform difference:
 
 ```math
-χ(d,s) = 1/2 ∫ |d(t) - s(t)|² dt
+\chi = \frac{1}{2} \int \|s(t) - d(t)\|^2 dt
 ```
 
 ### 5. Receiver Function Misfit
 
 Specialized for receiver function analysis:
 
+```math
+\chi = \frac{1}{2} \int \|RF_{syn}(t) - RF_{obs}(t)\|^2 dt
+```
+
 **Features:**
 
 - Deconvolution-based receiver function calculation
 - Water-level deconvolution
 - Radial/vertical component processing
+
+### 6. Waveform Cross-convolution Misfit
+Measures waveform differences via cross-convolution:
+
+```math
+\chi = \frac{1}{2} \int \|s_r(t) * d_z(t) - d_r(t) * s_z(t)\|^2 dt
+```
+
+**Features:**
+- Utilizes radial and vertical components
+- Source effects mitigation
+- Cycle-skipping avoidance
 
 ## 🔧 Configuration Parameters
 
