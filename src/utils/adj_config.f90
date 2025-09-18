@@ -16,7 +16,7 @@ module adj_config
 
   real(kind=dp) :: min_period, max_period, taper_percentage=0.3_dp, &
                     dt_sigma_min=1.0_dp, dlna_sigma_min=0.5_dp, transfunc_waterlevel=1e-10_dp, &
-                    water_threshold=0.02_dp, mt_nw=4.0_dp, phase_step=1.5_dp, &
+                    water_threshold=0.02_dp, wtr_env=0.2_dp, mt_nw=4.0_dp, phase_step=1.5_dp, &
                     dt_fac=2.0_dp, err_fac=2.5_dp, dt_max_scale=3.5_dp, TSHIFT_MIN=-5.0_dp, & 
                     TSHIFT_MAX=5.0_dp, DLNA_MIN=-1.5_dp, DLNA_MAX=1.5_dp, CC_MIN=0.8_dp
   integer :: itaper_type=1, imeasure_type=1, lnpt=15, min_cycle_in_window=3, &
