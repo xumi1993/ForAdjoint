@@ -116,7 +116,7 @@ After building, executable tools are available in the `bin/` directory:
 Measures phase and amplitude differences simultaneously using complex-valued approach:
 
 ```math
-\chi = \frac{1}{2} \int \left[ \| \frac{d(t)}{E_d(t)} - \frac{s(t)}{E_s(t)} \| - \| \frac{\mathcal{H\{d(t)\}}}{E_d(t)} - \frac{\mathcal{H\{s(t)\}}}{E_s(t)} \| \right] dt
+\chi = \frac{1}{2} \int \left[ \| \frac{d(t)}{E_d(t)} - \frac{s(t)}{E_s(t)} \| - \| \frac{\mathcal{H}\{d(t)\}}{E_d(t)} - \frac{\mathcal{H}\{s(t)\}}{E_s(t)} \| \right] dt
 ```
 
 **Features:**
