@@ -214,12 +214,6 @@ phase_step = 1.5      ! Phase step for cycle skipping
 
 The library includes comprehensive test cases and validation against [pyadjoint](https://github.com/adjtomo/pyadjoint):
 
-```bash
-# Run Python validation tests (requires pyadjoint)
-cd tests/
-python test_comparison.py
-```
-
 Example validation for exponentiated phase misfit:
 
 ```python
@@ -300,11 +294,13 @@ We welcome contributions! Please follow these guidelines:
 
 ## 📚 References
 
-1. **Adjoint Methods**: Tromp, J., Tape, C., & Liu, Q. (2005). Seismic tomography, adjoint methods, time reversal and banana-doughnut kernels. *Geophysical Journal International*.
+1. **Adjoint Methods**: Tromp, J., Tape, C., & Liu, Q. (2005). Seismic tomography, adjoint methods, time reversal and banana-doughnut kernels. *Geophysical Journal International*. DOI:[j.1365-246X.2004.02453.x](https://doi.org/10.1111/j.1365-246X.2004.02453.x)
 
-2. **Exponentiated Phase**: Yuan, Y. O., et al. (2016). Multiscale adjoint waveform tomography for surface and body waves. *Geophysics*.
+2. **Exponentiated Phase**: Yuan, Y. O., Bozdağ, E., Ciardelli, C., Gao, F., & Simons, F. J. (2020). The exponentiated phase measurement, and objective-function hybridization for adjoint waveform tomography. *Geophysical Journal International*. DOI: [10.1093/gji/ggaa063](https://doi.org/10.1093/gji/ggaa063)
 
-3. **Multitaper Method**: Park, J., et al. (1987). Multiple-taper spectral analysis of high-frequency seismograms. *Journal of Geophysical Research*.
+3. **Multitaper Method**: Park, J., et al. (1987). Multitaper spectral analysis of high‐frequency seismograms. *Journal of Geophysical Research*. DOI: [10.1029/JB092iB12p12675](https://doi.org/10.1029/JB092iB12p12675)
+
+4. **Receiver Function**: Xu, M., Wang, K., Chen, J., Yu, D., & Tong, P. (2023). Receiver Function Adjoint Tomography for Three-Dimensional High-Resolution Seismic Array Imaging: Methodology and Applications in Southeastern Tibet. *Geophysical Research Letters*. DOI: [10.1029/2023GL104077](https://doi.org/10.1029/2023GL104077)
 
 ## 📝 License
 
