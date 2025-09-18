@@ -173,8 +173,7 @@ Specialized for receiver function analysis:
 **Features:**
 
 - Deconvolution-based receiver function calculation
-- Water-level deconvolution
-- Radial/vertical component processing
+- Time domain iterative deconvolution
 
 ### 6. Waveform Cross-convolution Misfit
 Measures waveform differences via cross-convolution:
