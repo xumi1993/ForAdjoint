@@ -71,10 +71,13 @@ program example
   real(kind=dp), dimension(:), allocatable :: observed, synthetic
   real(kind=dp), dimension(1,2) :: time_window
   real(kind=dp) :: dt
+  integer :: ier
+  type(sachead) :: header
   
   ! Load seismogram data (SAC format)
-  call read_sac("observed.sac", observed, dt)
-  call read_sac("synthetic.sac", synthetic, dt)
+  call read_sac("observed.sac", header, observed, ier)
+  call read_sac("synthetic.sac", header, synthetic, ier)
+  dt = header.delta
   
   ! Define time window [start_time, end_time]
   time_window(1,:) = [50.0, 100.0]
