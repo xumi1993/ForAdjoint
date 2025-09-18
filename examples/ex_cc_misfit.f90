@@ -56,27 +56,6 @@ program cc_misfit
   call bandpass_dp(syn, dt, real(1/long_p), real(1/short_p), IORD)
   call bandpass_dp(dat, dt, real(1/long_p), real(1/short_p), IORD)
 
-  ! ! cut time window
-  ! nb = int((time_min - header%b) / dt) + 1
-  ! ne = int((time_max - header%b) / dt) + 1
-  ! syn_tw = syn(nb:ne)
-  ! dat_tw = dat(nb:ne)
-
-  ! ! calculate cross-correlation shift
-  ! call calc_cc_shift(dat_tw, syn_tw, dt, dt_sigma_min, dlna_sigma_min, &
-  !               tshift, dlna, sigma_dt, sigma_dlna)
-
-  ! call calc_cc_adjsrc(syn_tw, tshift, dlna, dt, sigma_dt, sigma_dlna, &
-  !                     misfit_p, misfit_q, adj_tw_p, adj_tw_q)
-  ! write(*,'(a,F7.5)') 'Time shift misfit: ', misfit_p
-  ! write(*,'(a,F7.5)') 'Amplitude anomaly misfit: ', misfit_q
-
-  ! allocate(adj_p(header%npts), adj_q(header%npts))
-  ! adj_p = 0.0_dp
-  ! adj_q = 0.0_dp
-  ! adj_p(nb:ne) = adj_tw_p
-  ! adj_q(nb:ne) = adj_tw_q
-
   allocate(windows(1, 2))
   windows(1, 1) = time_min - header%b
   windows(1, 2) = time_max - header%b
