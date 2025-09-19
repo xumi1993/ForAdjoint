@@ -44,8 +44,8 @@ program exp_ph_misfit
   dt = dble(header%delta)
 
   ! filter seismograms
-  min_period = short_p
-  max_period = long_p
+  cfg%min_period = short_p
+  cfg%max_period = long_p
   call bandpass_dp(syn, dt, real(1/long_p), real(1/short_p), IORD)
   call bandpass_dp(dat, dt, real(1/long_p), real(1/short_p), IORD)
 

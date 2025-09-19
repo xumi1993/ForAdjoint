@@ -2,6 +2,7 @@ program cc_misfit
   use cc_tt_misfit
   use mt_tt_misfit
   use sacio
+  use adj_config, only: cfg => adj_config_global
 
   implicit none
 
@@ -41,7 +42,7 @@ program cc_misfit
   read(slong_p, *) long_p
   read(stime_min, *) time_min
   read(stime_max, *) time_max
-  read(simeas, *) imeasure_type
+  read(simeas, *) cfg%imeasure_type
 
   ! read observed and synthetic seismograms
   call sacio_readsac(fobs, header, dat, ier)
@@ -49,22 +50,22 @@ program cc_misfit
   dt = dble(header%delta)
 
   ! filter seismograms
-  min_period = short_p
-  max_period = long_p
+  cfg%min_period = short_p
+  cfg%max_period = long_p
   call bandpass_dp(syn, dt, real(1/long_p), real(1/short_p), IORD)
   call bandpass_dp(dat, dt, real(1/long_p), real(1/short_p), IORD)
 
   allocate(windows(1, 2))
   windows(1, 1) = time_min - header%b
   windows(1, 2) = time_max - header%b
-  if (imeasure_type == IMEAS_CC_TT .or. imeasure_type == IMEAS_CC_DLNA) then
+  if (cfg%imeasure_type == IMEAS_CC_TT .or. cfg%imeasure_type == IMEAS_CC_DLNA) then
     call cctm%calc_adjoint_source(dat, syn, dt, windows)
-  else if(imeasure_type == IMEAS_CC_TT_MT .or. imeasure_type == IMEAS_CC_DLNA_MT) then
+  else if(cfg%imeasure_type == IMEAS_CC_TT_MT .or. cfg%imeasure_type == IMEAS_CC_DLNA_MT) then
     print *, 'Using multitaper cross-correlation measurement'
     call mttm%calc_adjoint_source(dat, syn, dt, windows)
   end if
 
-  select case (imeasure_type)
+  select case (cfg%imeasure_type)
     case (IMEAS_CC_TT) ! CC-TT
       write(*,'(a,F8.5,a,F8.5)') 'Time shift (s): ', cctm%residuals(1), '+/-', cctm%errors(1)
       write(*,'(a,F8.5)') 'Time shift misfit: ', cctm%misfits(1)
