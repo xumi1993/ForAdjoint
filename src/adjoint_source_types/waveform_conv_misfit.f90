@@ -1,7 +1,7 @@
 module waveform_conv_misfit
   use config
   use signal
-  use adj_config
+  use adj_config, cfg => adj_config_global
 
   type, extends(AdjointMeasurement) :: WaveformConvMisfit
     real(kind=dp), dimension(:), allocatable :: adj_src_r, adj_src_z
@@ -16,7 +16,7 @@ contains
     class(WaveformConvMisfit), intent(inout) :: this
     real(kind=dp), dimension(:), intent(in) :: dat_r, dat_z, syn_r, syn_z
     real(kind=dp), intent(in) :: dt
-    real(kind=dp), dimension(:), intent(in) :: window
+    real(kind=dp), dimension(2), intent(in) :: window
     real(kind=dp), dimension(:), allocatable :: sr, sz, dr, dz, c1, c2, &
                                                 adj_tw_r, adj_tw_z, conv_diff
     integer :: nlen_win, nlen, nb, ne
@@ -37,10 +37,10 @@ contains
     dz = dat_z(nb:ne)
 
     ! taper the windows
-    call window_taper(sr, taper_percentage, itaper_type)
-    call window_taper(dr, taper_percentage, itaper_type)
-    call window_taper(sz, taper_percentage, itaper_type)
-    call window_taper(dz, taper_percentage, itaper_type)
+    call window_taper(sr, cfg%taper_percentage, cfg%itaper_type)
+    call window_taper(dr, cfg%taper_percentage, cfg%itaper_type)
+    call window_taper(sz, cfg%taper_percentage, cfg%itaper_type)
+    call window_taper(dz, cfg%taper_percentage, cfg%itaper_type)
 
     ! calculate adjoint sources
     call myconvolution_dp(sr, dz, c1, 0)
@@ -54,8 +54,8 @@ contains
     adj_tw_z = adj_tw_z * dt
 
     ! add windwow to adjoint source
-    call window_taper(adj_tw_r, taper_percentage, itaper_type)
-    call window_taper(adj_tw_z, taper_percentage, itaper_type)
+    call window_taper(adj_tw_r, cfg%taper_percentage, cfg%itaper_type)
+    call window_taper(adj_tw_z, cfg%taper_percentage, cfg%itaper_type)
 
     this%misfits(1) = 0.5_dp * simpson((conv_diff)**2, dt)
     this%total_misfit = this%total_misfit + this%misfits(1)

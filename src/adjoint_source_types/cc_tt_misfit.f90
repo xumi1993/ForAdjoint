@@ -1,7 +1,7 @@
 module cc_tt_misfit
   use config
   use signal
-  use adj_config
+  use adj_config,  cfg => adj_config_global
   use cross_correlate
   implicit none
 
@@ -44,11 +44,11 @@ contains
       d = dat(nb:ne)
 
       ! taper the windows
-      call window_taper(s, taper_percentage, itaper_type)
-      call window_taper(d, taper_percentage, itaper_type)
+      call window_taper(s, cfg%taper_percentage, cfg%itaper_type)
+      call window_taper(d, cfg%taper_percentage, cfg%itaper_type)
 
       ! calculate cross-correlation shift
-      call calc_cc_shift(d, s, dt, dt_sigma_min, dlna_sigma_min, &
+      call calc_cc_shift(d, s, dt, cfg%dt_sigma_min, cfg%dlna_sigma_min, &
                          this%tshift(iwin), this%dlna(iwin), &
                          this%sigma_dt(iwin), this%sigma_dlna(iwin))
       
@@ -63,11 +63,11 @@ contains
                           this%misfit_p(iwin), this%misfit_q(iwin), &
                           adj_tw_p, adj_tw_q)
 
-      ! add windwow to adjoint source
-      call window_taper(adj_tw_p, taper_percentage, itaper_type)
-      call window_taper(adj_tw_q, taper_percentage, itaper_type)
+      ! add window to adjoint source
+      call window_taper(adj_tw_p, cfg%taper_percentage, cfg%itaper_type)
+      call window_taper(adj_tw_q, cfg%taper_percentage, cfg%itaper_type)
 
-      select case (imeasure_type)
+      select case (cfg%imeasure_type)
         case(IMEAS_CC_TT) ! CC-TT
           this%imeas(iwin) = IMEAS_CC_TT ! CC-TT
           this%total_misfit = this%total_misfit + this%misfit_p(iwin)
@@ -129,10 +129,10 @@ contains
     integer, intent(in) :: iwin
 
     ! cc_max = cc_max_coef(d, s)
-    if ((this%cc_max(iwin) < CC_MIN) .or. (this%tshift(iwin) < TSHIFT_MIN) &
-                                     .or. (this%tshift(iwin) > TSHIFT_MAX) &
-                                     .or. (this%dlna(iwin) < DLNA_MIN) &
-                                     .or. (this%dlna(iwin) > DLNA_MAX)) then
+    if ((this%cc_max(iwin) < cfg%CC_MIN) .or. (this%tshift(iwin) < cfg%TSHIFT_MIN) &
+                                     .or. (this%tshift(iwin) > cfg%TSHIFT_MAX) &
+                                     .or. (this%dlna(iwin) < cfg%DLNA_MIN) &
+                                     .or. (this%dlna(iwin) > cfg%DLNA_MAX)) then
       this%select_meas(iwin) = .false.
       this%misfit_p(iwin) = 0.0_dp
       this%misfit_q(iwin) = 0.0_dp

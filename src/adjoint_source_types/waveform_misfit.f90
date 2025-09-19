@@ -1,5 +1,5 @@
 module waveform_misfit
-  use adj_config
+  use adj_config, cfg => adj_config_global
   use config
   use signal
   implicit none
@@ -43,12 +43,12 @@ contains
       d = dat(nb:ne)
 
       ! taper the windows
-      call window_taper(s, taper_percentage, itaper_type)
-      call window_taper(d, taper_percentage, itaper_type)
+      call window_taper(s, cfg%taper_percentage, cfg%itaper_type)
+      call window_taper(d, cfg%taper_percentage, cfg%itaper_type)
 
       adj_tw = s - d
 
-      call window_taper(adj_tw, taper_percentage, itaper_type)
+      call window_taper(adj_tw, cfg%taper_percentage, cfg%itaper_type)
 
       ! calculate waveform misfit and adjoint source
       misfit = 0.5_dp * simpson((s - d)**2, dt)
@@ -57,6 +57,7 @@ contains
       this%total_misfit = this%total_misfit + misfit
       this%adj_src(nb:ne) = adj_tw
 
+      deallocate(s, d, adj_tw)
     end do
 
   end subroutine calc_adjoint_source

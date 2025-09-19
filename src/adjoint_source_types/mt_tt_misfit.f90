@@ -1,7 +1,7 @@
 module mt_tt_misfit
   use config
   use signal
-  use adj_config
+  use adj_config, cfg => adj_config_global
   use fftpack
   use cc_tt_misfit, only: CCTTMisfit
   use cross_correlate
@@ -23,7 +23,6 @@ module mt_tt_misfit
                           calculate_freq_domain_taper
   end type MTTTMisfit
 
-  type(fft_cls), private :: fft_obj
 contains
 
   subroutine calc_adjoint_source(this, dat, syn, dt, windows)
@@ -53,9 +52,9 @@ contains
     ! allocate measurement arrays
     call this%initialize()
 
-    this%nlen_f = 2 ** lnpt
-    this%dt = dt
     this%nlen = size(dat)
+    this%nlen_f = 2 ** exponent(real(this%nlen))
+    this%dt = dt
     this%tlen = this%nlen * dt
     if (allocated(this%adj_src)) deallocate(this%adj_src)
     allocate(this%adj_src(this%nlen))
@@ -71,11 +70,11 @@ contains
       d = dat(nb:ne)
 
       ! taper the windows
-      call window_taper(s, taper_percentage, itaper_type)
-      call window_taper(d, taper_percentage, itaper_type)
+      call window_taper(s, cfg%taper_percentage, cfg%itaper_type)
+      call window_taper(d, cfg%taper_percentage, cfg%itaper_type)
 
       ! calculate cross-correlation shift
-      call calc_cc_shift(d, s, dt, dt_sigma_min, dlna_sigma_min, &
+      call calc_cc_shift(d, s, dt, cfg%dt_sigma_min, cfg%dlna_sigma_min, &
                          this%tshift(iwin), this%dlna(iwin), &
                          this%sigma_dt(iwin), this%sigma_dlna(iwin))
       
@@ -108,8 +107,8 @@ contains
         end if
 
         ! calculate multitaper transfer function and measurements
-        call dpss_windows(nlen_win, mt_nw, num_taper, tapers, eig)
-        do i = 1, num_taper
+        call dpss_windows(nlen_win, cfg%mt_nw, cfg%num_taper, tapers, eig)
+        do i = 1, cfg%num_taper
           if (eig(i) > HUGEVAL) then
             write(*,*) 'Warning: DPSS taper ', i, ' has infinite eigenvalue:', eig(i),'. Skipping MTM for window ', iwin
             is_mtm = .false.
@@ -122,8 +121,8 @@ contains
         call this%calculate_multitaper(d, s, tapers, wvec, nfreq_min, nfreq_max, &
                                       this%tshift(iwin), this%dlna(iwin), &
                                       phi_mtm, abs_mtm, dtau_mtm, dlna_mtm)
-
-        if (use_mt_error) then 
+        
+        if (cfg%use_mt_error) then 
           call this%calculate_mt_error(d, s, tapers, wvec, nfreq_min, nfreq_max, &
                                       this%tshift(iwin), this%dlna(iwin), phi_mtm, abs_mtm, dtau_mtm, dlna_mtm, &
                                       err_phi, err_abs, err_dtau, err_dlna)
@@ -148,7 +147,7 @@ contains
         ! calculate multitaper phase shift misfit and adjoint source
         call this%calculate_mt_adjsrc(s, tapers, nfreq_min, nfreq_max, &
                                       dtau_mtm, dlna_mtm, wp_w, wq_w, adj_tw_p, adj_tw_q)
-        this%imeas(iwin) = imeasure_type  
+        this%imeas(iwin) = cfg%imeasure_type  
         exit
 
       end do ! end of is_mtm loop
@@ -159,7 +158,7 @@ contains
                             this%sigma_dt(iwin), this%sigma_dlna(iwin), &
                             this%misfit_p(iwin), this%misfit_q(iwin), &
                             adj_tw_p, adj_tw_q)
-        select case (imeasure_type)
+        select case (cfg%imeasure_type)
           case(IMEAS_CC_TT_MT) ! MT-CC-TT (phase shift)
             this%imeas(iwin) = IMEAS_CC_TT
           case(IMEAS_CC_DLNA_MT) ! MT-CC-DLNA (amplitude)
@@ -167,11 +166,11 @@ contains
         end select
       endif
 
-      call window_taper(adj_tw_p, taper_percentage, itaper_type)
-      call window_taper(adj_tw_q, taper_percentage, itaper_type)
+      call window_taper(adj_tw_p, cfg%taper_percentage, cfg%itaper_type)
+      call window_taper(adj_tw_q, cfg%taper_percentage, cfg%itaper_type)
 
       ! select measurements based on measurement type and add to total adjoint source
-      select case (imeasure_type)
+      select case (cfg%imeasure_type)
         case(IMEAS_CC_TT_MT) ! MT-CC-TT (phase shift)
           this%total_misfit = this%total_misfit + this%misfit_p(iwin)
           this%misfits(iwin) = this%misfit_p(iwin)
@@ -265,7 +264,7 @@ contains
     enddo
 
     ! Calculate the transfer function with water level stabilization
-    wlevel = maxval(abs(bot_tf(1:fnum))) * transfunc_waterlevel**2
+    wlevel = maxval(abs(bot_tf(1:fnum))) * cfg%transfunc_waterlevel**2
 
     ! Calculate the transfer function
     do i = nfreq_min, nfreq_max
@@ -541,7 +540,7 @@ contains
         wave_period = 1.0_dp / (j * df)
         
         ! dt larger than 1/dt_fac of the wave period
-        max_dt_allowed = wave_period / dt_fac
+        max_dt_allowed = wave_period / cfg%dt_fac
         if (abs(dtau_mtm(j)) > max_dt_allowed) then
           write(*,*) 'INFO: reject MTM: dt measurement is too large at frequency', j
           is_mtm = .false.
@@ -549,7 +548,7 @@ contains
         end if
         
         ! Error larger than 1/err_fac of wave period
-        max_err_allowed = wave_period / err_fac
+        max_err_allowed = wave_period / cfg%err_fac
         if (err_dtau(j) > max_err_allowed) then
           write(*,*) 'DEBUG: reject MTM: dt error is too large at frequency', j
           is_mtm = .false.
@@ -557,7 +556,7 @@ contains
         end if
         
         ! dt larger than the maximum allowable time shift
-        if (abs(dtau_mtm(j)) > dt_max_scale * abs(cc_tshift)) then
+        if (abs(dtau_mtm(j)) > cfg%dt_max_scale * abs(cc_tshift)) then
           write(*,*) 'DEBUG: reject MTM: dt is larger than maximum allowable time shift at frequency', j
           is_mtm = .false.
           exit
@@ -575,7 +574,7 @@ contains
     ! Check if the time shift is within acceptable limits
     if (abs(this%tshift(iwin)) <= this%dt) then
       is_acceptable = .false.
-    elseif (min_cycle_in_window * min_period > nlen_w) then
+    elseif (cfg%min_cycle_in_window * cfg%min_period > nlen_w) then
       is_acceptable = .false.
     else
       is_acceptable = .true.
@@ -603,7 +602,7 @@ contains
       ! If the data length matches the window length, use it directly
       d(1:nlen_w) = dat(nb_d:ne_d)
       d = d * exp(-this%dlna(iwin))
-      call window_taper(d, taper_percentage, itaper_type)
+      call window_taper(d, cfg%taper_percentage, cfg%itaper_type)
       is_acceptable = .true.
     else
       d = dat(nb:ne)
@@ -623,6 +622,7 @@ contains
     real(kind=dp), dimension(:), allocatable :: syn_expand
     integer :: fnum, i_ampmax, ifreq_min, ifreq_max, iw
     logical :: is_search
+    type(fft_cls) :: fftins
 
     ! calculate frequency limits for MTM analysis using synthetic data
     fnum = int(this%nlen_f / 2) + 1
@@ -631,7 +631,7 @@ contains
     allocate(syn_expand(this%nlen_f))
     syn_expand = 0.0_dp
     syn_expand(1:size(syn)) = syn(:)
-    s_spec = fft_obj%fft_dp(syn_expand, this%nlen_f) * this%dt
+    s_spec = fftins%fft_dp(syn_expand, this%nlen_f) * this%dt
 
     ! Calculate the frequency limits based on the sampling rate and window length
     ! Only consider the positive frequencies (1:fnum)
@@ -639,11 +639,11 @@ contains
     i_ampmax = maxloc(abs(s_spec(1:fnum)), dim=1)
 
     ! Scale the maximum amplitude to the water threshold
-    scaled_wl = water_threshold * ampmax
+    scaled_wl = cfg%water_threshold * ampmax
 
     ! Find the frequency index corresponding to the maximum amplitude
-    ifreq_min = max(1, int(1.0_dp / (max_period * df)))  ! Ensure minimum is 1
-    ifreq_max = min(fnum, int(1.0_dp / (min_period * df)))  ! Ensure maximum doesn't exceed fnum
+    ifreq_min = max(1, int(1.0_dp / (cfg%max_period * df)))  ! Ensure minimum is 1
+    ifreq_max = min(fnum, int(1.0_dp / (cfg%min_period * df)))  ! Ensure maximum doesn't exceed fnum
 
     ! write(*,*) 'DEBUG: fnum=', fnum, ', i_ampmax=', i_ampmax
     ! write(*,*) 'DEBUG: ifreq_min=', ifreq_min, ', ifreq_max=', ifreq_max
@@ -669,9 +669,9 @@ contains
       end do
     end if
     ! Make sure `nfreq_min` does not go below reasonable limits
-    nfreq_min = max(nfreq_min, ifreq_min, max(1, int(min_cycle_in_window / this%tlen / df)))
+    nfreq_min = max(nfreq_min, ifreq_min, max(1, int(cfg%min_cycle_in_window / this%tlen / df)))
 
-    half_taper_bandwidth = mt_nw / (4.0_dp * this%tlen)
+    half_taper_bandwidth = cfg%mt_nw / (4.0_dp * this%tlen)
     chosen_bandwidth = (nfreq_max - nfreq_min) * df
     if (chosen_bandwidth < half_taper_bandwidth) then
       is_acceptable = .false.
@@ -759,14 +759,14 @@ contains
     wq_w = w_taper / ffac
     
     ! Choose whether to scale by CC error or by calculated MT errors
-    if (use_cc_error) then
+    if (cfg%use_cc_error) then
       wp_w = wp_w / (err_dt_cc ** 2)
       wq_w = wq_w / (err_dlna_cc ** 2)
-    else if (use_mt_error) then
+    else if (cfg%use_mt_error) then
       ! Calculate water threshold for MT measurements
-      dtau_wtr = water_threshold * sum(abs(dtau_mtm(nfreq_min:nfreq_max-1))) / &
+      dtau_wtr = cfg%water_threshold * sum(abs(dtau_mtm(nfreq_min:nfreq_max-1))) / &
                  (nfreq_max - nfreq_min)
-      dlna_wtr = water_threshold * sum(abs(dlna_mtm(nfreq_min:nfreq_max-1))) / &
+      dlna_wtr = cfg%water_threshold * sum(abs(dlna_mtm(nfreq_min:nfreq_max-1))) / &
                  (nfreq_max - nfreq_min)
       
       ! Apply water threshold to error estimates where needed

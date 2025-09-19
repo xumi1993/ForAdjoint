@@ -1,7 +1,7 @@
 module rf_misfit
-  use adj_config
   use config
   use signal
+  use adj_config, cfg => adj_config_global
   use decon_mod, only: deconit
 
   type, extends(AdjointMeasurement) :: RFMisfit
@@ -13,12 +13,12 @@ module rf_misfit
 
 contains
 
-  subroutine calc_adjoint_source(this, dat, syn, synr, synz, dt, tp, windows, &
+  subroutine calc_adjoint_source(this, dat, syn, synr, synz, dt, tp, window, &
                                  f0, shift, maxit, minderr)
     class(RFMisfit), intent(inout) :: this
     real(kind=dp), dimension(:), intent(in) :: dat, syn, synr, synz
     real(kind=dp), intent(in) :: dt, f0, tp
-    real(kind=dp), dimension(2), intent(in) :: windows
+    real(kind=dp), dimension(2), intent(in) :: window
     real(kind=dp), optional, intent(in) :: shift, minderr
     integer, optional, intent(in) :: maxit
     real(kind=dp), dimension(2) :: win_tr
@@ -77,27 +77,27 @@ contains
     deallocate(num, den, z_rev, r_rev)
 
     ! tapper
-    win_tr(1) = windows(1) + shift_loc
-    win_tr(2) = windows(2) + shift_loc
+    win_tr(1) = window(1) + shift_loc
+    win_tr(2) = window(2) + shift_loc
     if (win_tr(1) < 0.0_dp) win_tr(1) = 0.0_dp
     call get_window_info(win_tr, dt, nb, ne, nlen_win_rf)
     adj_r_tw = adj_r(nb:ne)
     adj_z_tw = adj_z(nb:ne)
-    call window_taper(adj_r_tw, taper_percentage, itaper_type)
-    call window_taper(adj_z_tw, taper_percentage, itaper_type)
+    call window_taper(adj_r_tw, cfg%taper_percentage, cfg%itaper_type)
+    call window_taper(adj_z_tw, cfg%taper_percentage, cfg%itaper_type)
 
     ! trim data and synthetic
     dat_tw = dat_norm(nb:ne)
     syn_tw = syn_norm(nb:ne)
-    call window_taper(dat_tw, taper_percentage, itaper_type)
-    call window_taper(syn_tw, taper_percentage, itaper_type)
+    call window_taper(dat_tw, cfg%taper_percentage, cfg%itaper_type)
+    call window_taper(syn_tw, cfg%taper_percentage, cfg%itaper_type)
 
     ! calculate misfit
     this%misfits(1) = 0.5_dp * simpson((syn_tw - dat_tw)**2, dt)
     this%residuals(1) = sum(syn_tw - dat_tw) / nlen_win_rf
     this%total_misfit = this%total_misfit + this%misfits(1)
 
-    win_tr = windows + tp
+    win_tr = window + tp
     call get_window_info(win_tr, dt, nb, ne, nlen_win)
     if (nlen_win > nlen_win_rf) then
       nb = nb - (nlen_win - nlen_win_rf)

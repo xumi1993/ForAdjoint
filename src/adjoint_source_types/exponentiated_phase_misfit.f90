@@ -1,7 +1,7 @@
 module exponentiated_phase_misfit
   use config
   use signal
-  use adj_config
+  use adj_config, cfg => adj_config_global
   use fftpack
   implicit none
 
@@ -51,8 +51,8 @@ contains
       d = dat(nb:ne)
 
       ! taper the windows
-      call window_taper(s, taper_percentage, itaper_type)
-      call window_taper(d, taper_percentage, itaper_type)
+      call window_taper(s, cfg%taper_percentage, cfg%itaper_type)
+      call window_taper(d, cfg%taper_percentage, cfg%itaper_type)
 
       ! calculate envelopes and hilbert transforms
       h_s = fft_ins%hilbert(s)
@@ -63,8 +63,8 @@ contains
       hilb_d = aimag(h_d)
 
       ! calculate water level
-      threshold_s = wtr_env * maxval(env_s)
-      threshold_d = wtr_env * maxval(env_d)
+      threshold_s = cfg%wtr_env * maxval(env_s)
+      threshold_d = cfg%wtr_env * maxval(env_d)
       env_s_wl = env_s + threshold_s
       env_d_wl = env_d + threshold_d
 
@@ -87,8 +87,8 @@ contains
                   aimag(fft_ins%hilbert(diff_imag * s ** 2 / env_s_wtr_cubic))
 
       ! taper the adjoint source
-      call window_taper(adj_real, taper_percentage, itaper_type)
-      call window_taper(adj_imag, taper_percentage, itaper_type)
+      call window_taper(adj_real, cfg%taper_percentage, cfg%itaper_type)
+      call window_taper(adj_imag, cfg%taper_percentage, cfg%itaper_type)
 
       this%adj_src(nb:ne) = this%adj_src(nb:ne) + adj_real(1:nlen_win) + adj_imag(1:nlen_win)
 
