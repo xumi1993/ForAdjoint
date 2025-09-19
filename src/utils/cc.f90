@@ -1,6 +1,7 @@
 module cross_correlate
   use config
   use signal
+  use, intrinsic :: ieee_arithmetic
   implicit none
 
 contains
@@ -83,11 +84,11 @@ contains
     sigma_dlna = sqrt(sigma_dlna_num / sigma_dlna_den)
 
     ! Check if the calculated errors are within the specified limits
-    if (sigma_dt < dt_sigma_min .or. isnan(sigma_dt)) then
+    if (sigma_dt < dt_sigma_min .or. ieee_is_nan(sigma_dt)) then
       sigma_dt = dt_sigma_min
     end if
 
-    if (sigma_dlna < dlna_sigma_min .or. isnan(sigma_dlna)) then
+    if (sigma_dlna < dlna_sigma_min .or. ieee_is_nan(sigma_dlna)) then
       sigma_dlna = dlna_sigma_min
     end if
 

@@ -8,6 +8,7 @@ module constants
   integer, parameter :: IORD = 2
   real(kind=dp), parameter :: TRBDNDW = 0.3
   real(kind=dp), parameter :: APARM = 30.
+  real(kind=dp), parameter :: HUGEVAL = 1.0e30_dp
   integer, parameter :: PASSES = 2
   ! number of entries in window_chi output file
   integer, parameter :: N_MEASUREMENT = 5

@@ -6,6 +6,7 @@ module mt_tt_misfit
   use cc_tt_misfit, only: CCTTMisfit
   use cross_correlate
   use dpss
+  use, intrinsic :: ieee_arithmetic
 
   implicit none
 
@@ -35,8 +36,8 @@ contains
                                                 eig, phi_mtm, abs_mtm, dtau_mtm, dlna_mtm,&
                                                 err_phi, err_abs, err_dtau, err_dlna, &
                                                 wp_w, wq_w
-    real(kind=dp) :: df, misfit_p, misfit_q
-    integer :: iwin, nb, ne, nlen_win, nfreq_min, nfreq_max
+    real(kind=dp) :: df
+    integer :: iwin, nb, ne, nlen_win, nfreq_min, nfreq_max, i
     logical :: is_mtm
     type(fft_cls) :: fftins
 
@@ -108,12 +109,20 @@ contains
 
         ! calculate multitaper transfer function and measurements
         call dpss_windows(nlen_win, mt_nw, num_taper, tapers, eig)
-        tapers = transpose(tapers) * dsqrt(dble(nlen_win))
+        do i = 1, num_taper
+          if (eig(i) > HUGEVAL) then
+            write(*,*) 'Warning: DPSS taper ', i, ' has infinite eigenvalue:', eig(i),'. Skipping MTM for window ', iwin
+            is_mtm = .false.
+            exit
+          end if
+        end do
+        if (.not. is_mtm) exit
 
+        tapers = transpose(tapers) * dsqrt(dble(nlen_win))
         call this%calculate_multitaper(d, s, tapers, wvec, nfreq_min, nfreq_max, &
                                       this%tshift(iwin), this%dlna(iwin), &
                                       phi_mtm, abs_mtm, dtau_mtm, dlna_mtm)
-        
+
         if (use_mt_error) then 
           call this%calculate_mt_error(d, s, tapers, wvec, nfreq_min, nfreq_max, &
                                       this%tshift(iwin), this%dlna(iwin), phi_mtm, abs_mtm, dtau_mtm, dlna_mtm, &
@@ -247,8 +256,8 @@ contains
 
       ! Prepare zero-padded arrays for FFT
 
-      d_tw = fftins%fft(d_t, this%nlen_f) * this%dt
-      s_tw = fftins%fft(s_t, this%nlen_f) * this%dt
+      d_tw = fftins%fft_dp(d_t, this%nlen_f) * this%dt
+      s_tw = fftins%fft_dp(s_t, this%nlen_f) * this%dt
 
       ! Accumulate the top and bottom terms for multitaper
       top_tf = top_tf + d_tw * conjg(s_tw)
@@ -307,7 +316,7 @@ contains
     real(kind=dp), dimension(:,:), allocatable :: phi_mul, abs_mul, dtau_mul, dlna_mul, tapers_om
     real(kind=dp), dimension(:), allocatable :: ephi_ave, eabs_ave, edtau_ave, edlna_ave
     real(kind=dp), dimension(:), allocatable :: phi_om, abs_om, dtau_om, dlna_om
-    integer :: nlen_t, ntaper, itaper, i, j, icol
+    integer :: nlen_t, ntaper, itaper, j, icol
     
     nlen_t = size(d)
     ntaper = size(tapers, 2)
@@ -412,7 +421,7 @@ contains
     integer, intent(in) :: nfreq_min, nfreq_max
     real(kind=dp), dimension(:), allocatable, intent(out) :: adj_p, adj_q
     
-    real(kind=dp), dimension(:), allocatable :: taper, s_t, s_tv, fp_t, fq_t
+    real(kind=dp), dimension(:), allocatable :: s_t, s_tv, fp_t, fq_t
     real(kind=dp), dimension(:), allocatable :: p_wt, q_wt, taper_full
     complex(kind=dp), dimension(:), allocatable :: bottom_p, bottom_q
     complex(kind=dp), dimension(:,:), allocatable :: s_tw, s_tvw
@@ -454,8 +463,8 @@ contains
       s_tv(1:nlen_t) = gradient(s_t(1:nlen_t), this%dt)
       
       ! Apply FFT to tapered measurements to get to freq. domain.
-      s_tw(:, itaper) = fftins%fft(s_t, this%nlen_f) * this%dt
-      s_tvw(:, itaper) = fftins%fft(s_tv, this%nlen_f) * this%dt
+      s_tw(:, itaper) = fftins%fft_dp(s_t, this%nlen_f) * this%dt
+      s_tvw(:, itaper) = fftins%fft_dp(s_tv, this%nlen_f) * this%dt
       
       ! Calculate bottom term of the adjoint equation
       bottom_p = bottom_p + s_tvw(:, itaper) * conjg(s_tvw(:, itaper))
@@ -611,6 +620,7 @@ contains
     complex(kind=dp), dimension(:), allocatable :: s_spec
     real(kind=dp) :: ampmax, scaled_wl, half_taper_bandwidth, &
                      chosen_bandwidth
+    real(kind=dp), dimension(:), allocatable :: syn_expand
     integer :: fnum, i_ampmax, ifreq_min, ifreq_max, iw
     logical :: is_search
 
@@ -618,8 +628,10 @@ contains
     fnum = int(this%nlen_f / 2) + 1
     
     ! Use synthetic data (not adj_src) to match Python implementation
-    allocate(s_spec(this%nlen_f))
-    s_spec = fft_obj%fft(syn, this%nlen_f) * this%dt
+    allocate(syn_expand(this%nlen_f))
+    syn_expand = 0.0_dp
+    syn_expand(1:size(syn)) = syn(:)
+    s_spec = fft_obj%fft_dp(syn_expand, this%nlen_f) * this%dt
 
     ! Calculate the frequency limits based on the sampling rate and window length
     ! Only consider the positive frequencies (1:fnum)

@@ -29,7 +29,7 @@ contains
     ! BU - butterworth
     ! BP - bandpass
     ! LQY: Shouldn't  delta_t_sngl = sngl(delta_t) still be done? same for f1,f2?
-    call xapiir(x_sngl,n,'BU',sngl(TRBDNDW),sngl(APARM),order,'BP',sngl(f1),sngl(f2),sngl(delta_t),PASSES)
+    call xapiir(x_sngl,n,'BU',sngl(TRBDNDW),sngl(APARM),order,'BP',f1,f2,sngl(delta_t),PASSES)
 
     x(1:n) = dble(x_sngl(1:n))
 
@@ -499,7 +499,7 @@ contains
 
     ! Calculate the number of samples in the window
     nb = int(window(1) / dt) + 1
-    ne = int(window(2) / dt) + 1
+    ne = int(window(2) / dt)
     nlen_win = ne - nb + 1
 
     if (nlen_win <= 0) then

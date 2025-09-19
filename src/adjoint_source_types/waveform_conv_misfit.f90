@@ -19,7 +19,7 @@ contains
     real(kind=dp), dimension(:), intent(in) :: window
     real(kind=dp), dimension(:), allocatable :: sr, sz, dr, dz, c1, c2, &
                                                 adj_tw_r, adj_tw_z, conv_diff
-    integer :: nlen_win, nlen
+    integer :: nlen_win, nlen, nb, ne
 
     this%nwin = 1
     nlen = size(dat_r)

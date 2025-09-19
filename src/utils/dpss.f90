@@ -11,33 +11,20 @@ contains
 
   ! Symmetric tridiagonal system solver, from Golub and Van Loan pg 157
   ! Translated from Python version
-  subroutine tridisolve(d, e, b, n, x, overwrite_b)
+  subroutine tridisolve(d, e, n, x)
     integer, intent(in) :: n
     real(kind=dp), intent(in) :: d(n)
     real(kind=dp), intent(in) :: e(n-1)
-    real(kind=dp), intent(in) :: b(n)
-    real(kind=dp), intent(out) :: x(n)
-    logical, intent(in), optional :: overwrite_b
+    real(kind=dp), intent(inout) :: x(n)
     
     ! Local variables
     real(kind=dp) :: dw(n), ew(n-1)
     real(kind=dp) :: t
     integer :: k
-    logical :: overwrite
-    
-    ! Default value for overwrite_b
-    overwrite = .true.
-    if (present(overwrite_b)) overwrite = overwrite_b
     
     ! Work vectors
     dw = d
     ew = e
-    
-    if (overwrite) then
-      x = b
-    else
-      x = b
-    endif
     
     ! Forward elimination
     do k = 2, n
@@ -76,7 +63,7 @@ contains
     real(kind=dp) :: x_prev(n)
     real(kind=dp) :: norm_x, tolerance
     real(kind=dp) :: diff_norm
-    integer :: i, iter_count
+    integer :: iter_count
     
     ! Default tolerance
     tolerance = 1.0d-8
@@ -104,7 +91,7 @@ contains
     do
       iter_count = iter_count + 1
       x_prev = x
-      call tridisolve(eig_diag, e, x, n, x, .true.)
+      call tridisolve(eig_diag, e, n, x)
       norm_x = sqrt(sum(x**2))
       x = x / norm_x
       
@@ -170,13 +157,7 @@ contains
     real(kind=dp), allocatable :: dpss_rxx(:), r(:)
     real(kind=dp) :: temp_sum
     integer :: idx_count
-    logical, allocatable :: idx_mask(:)
-    
-    ! Timing variables
-    integer :: count_rate, count_max
-    integer :: start_count, end_count
-    real(kind=dp) :: elapsed_time
-    
+    logical, allocatable :: idx_mask(:)    
     
     allocate(dpss(k_max, n))
     allocate(eigvals(k_max))

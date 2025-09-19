@@ -7,12 +7,10 @@ program cc_misfit
 
   character(len=MAX_STRING_LEN) :: fsyn, fobs, fadj, fsac, sshort_p, slong_p, &
                                    stime_min, stime_max, simeas
-  real(kind=dp) :: short_p, long_p, time_min, time_max, tshift, dlna, sigma_dt, sigma_dlna, &
-                   misfit_p, misfit_q, dt
-  real(kind=dp), dimension(:), allocatable :: syn, dat, syn_tw, dat_tw, adj_tw_p, adj_tw_q, &
-                                              adj_p, adj_q
+  real(kind=dp) :: short_p, long_p, time_min, time_max, dt
+  real(kind=dp), dimension(:), allocatable :: syn, dat
   real(kind=dp), dimension(:,:), allocatable :: windows
-  integer :: ier, nb, ne
+  integer :: ier
   type(sachead) :: header
   type(CCTTMisfit) :: cctm
   type(MTTTMisfit) :: mttm

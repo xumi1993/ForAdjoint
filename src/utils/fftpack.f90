@@ -1,10 +1,10 @@
 module fftpack
     implicit none
-    integer, private, parameter :: dp = kind(1.0d0)
+    integer, private, parameter :: dp = kind(1.0d0), sp = kind(1.0)
 
     type, public :: fft_cls
         contains
-            procedure :: fft
+            procedure :: fft, fft_dp
             procedure :: ifft
             procedure :: ifft_complex
             procedure :: fftfreq
@@ -13,12 +13,40 @@ module fftpack
 
 contains
 
+    function fft_dp(this, x, nft) result(fpx)
+        class(fft_cls) :: this
+        integer, intent(in) :: nft
+        real(kind=dp), dimension(nft) :: x
+        complex(kind=dp), dimension(nft) :: fpx
+        complex(kind=sp), dimension(nft) :: fpr
+        integer :: n_input
+
+        n_input = size(x)
+        if (n_input > nft) then
+            write(*,*) 'Error: fft_dp input size greater than nft'
+            error stop
+        end if
+
+        fpr = 0.0
+        fpr(1:n_input) = cmplx(real(x), 0.0)
+        call fft_raw(nft, fpr, -1)
+        fpx = cmplx(fpr, kind=dp)
+    end function fft_dp
+
     function fft(this, x, nft) result(fpx)
         class(fft_cls) :: this
-        integer :: nft
-        double precision, dimension(nft) :: x
-        complex, dimension(nft) :: fpx
-        fpx = cmplx(x, 0)
+        integer, intent(in) :: nft
+        real(kind=dp), dimension(nft) :: x
+        complex(kind=sp), dimension(nft) :: fpx
+        integer :: n_input
+        
+        n_input = size(x)
+        if (n_input > nft) then
+            write(*,*) 'Error: fft input size greater than nft'
+            error stop
+        end if
+
+        fpx(1:n_input) = cmplx(real(x), 0.0)
         call fft_raw(nft, fpx, -1)
     end function fft
 
@@ -114,7 +142,7 @@ contains
         complex(kind=dp), dimension(:), allocatable :: xa ! Analytic signal output
         
         ! Local variables
-        integer :: n, n_input, i, nft
+        integer :: n, n_input, nft
         real(kind=dp), dimension(:), allocatable :: x_padded
         complex, dimension(:), allocatable :: xf, h_weights
         

@@ -126,7 +126,6 @@ contains
 
   subroutine cc_measure_select(this, iwin)
     class(CCTTMisfit), intent(inout) :: this
-    real(kind=dp) :: cc_max
     integer, intent(in) :: iwin
 
     ! cc_max = cc_max_coef(d, s)
