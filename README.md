@@ -191,27 +191,6 @@ Measures waveform differences via cross-convolution:
 - Source effects mitigation
 - Cycle-skipping avoidance
 
-## 🔧 Configuration Parameters
-
-Key parameters can be configured through the adjoint configuration module:
-
-```fortran
-! Filter parameters
-min_period = 5.0        ! Minimum period (s)
-max_period = 50.0       ! Maximum period (s)
-
-! Taper parameters  
-taper_percentage = 0.3  ! Taper percentage (0.0-1.0)
-itaper_type = 1        ! 1=Hanning, 2=Hamming, 3=Cosine, 4=Cosine^10
-
-! Water level thresholds
-water_threshold = 0.02  ! Deconvolution water level
-wtr_env = 0.2          ! Envelope water level
-
-! Multitaper parameters
-mt_nw = 4.0           ! Time-bandwidth product
-phase_step = 1.5      ! Phase step for cycle skipping
-```
 
 ## 🧪 Testing and Validation
 
@@ -228,11 +207,12 @@ observed = obspy.read("example_data/TA.A38.BXZ.sac.obs")[0]
 synthetic = obspy.read("example_data/TA.A38.BXZ.sac.syn")[0]
 
 # Calculate with pyadjoint
-config = pyadjoint.get_config(adjsrc_type="exponentiated_phase")
-adj_py = pyadjoint.calculate_adjoint_source(config=config, 
-                                           observed=observed, 
-                                           synthetic=synthetic,
-                                           windows=[(42.8, 91.1)])
+config = pyadjoint.get_config(adjsrc_type="exponentiated_phase",
+                              min_period=5., max_period=50.,
+                              taper_percentage=0.3, taper_type="hann")
+adj_tt = pyadjoint.calculate_adjoint_source(config=config,
+                                             observed=observed, synthetic=synthetic,
+                                             window=[42.8, 91.1])
 
 # Compare with ForAdjoint results
 # Results should match within numerical precision

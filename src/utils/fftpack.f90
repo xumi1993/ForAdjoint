@@ -1,6 +1,7 @@
 module fftpack
   implicit none
   integer, private, parameter :: dp = kind(1.0d0), sp = kind(1.0)
+  real(kind=sp), parameter, private :: PI = 3.14159265358979323846_sp
 
   type, public :: fft_cls
     contains
@@ -76,35 +77,35 @@ contains
     complex :: temp, theta
     complex, intent(inout) :: x(n)
 
-    j=1
-    do i=1, n
-      if (i < j) then 
-        temp=x(j)
-        x(j)=x(i)
-        x(i)=temp
+    j = 1
+    do i = 1, n
+      if (i < j) then
+        temp = x(j)
+        x(j) = x(i)
+        x(i) = temp
       endif
       m = n/2
       do while (.true.)
         if (j > m) then
-          j=j-m
-          m=m/2
+          j = j - m
+          m = m / 2
           if (m < 2) exit
         else
           exit
         endif
       enddo
-      j=j+m
+      j = j + m
     enddo
-    kmax=1
-    do while(kmax < n)
-      istep=kmax*2
-      do k=1,kmax
-        theta=cmplx(0.0,3.141592653*ind*(k-1)/kmax)
-        do i=k, n, istep
-          j=i+kmax
-          temp=x(j)*cexp(theta)
-          x(j)=x(i)-temp
-          x(i)=x(i)+temp
+    kmax = 1
+    do while (kmax < n)
+      istep = kmax * 2
+      do k = 1, kmax
+        theta = cmplx(0.0, PI * ind * (k - 1) / kmax)
+        do i = k, n, istep
+          j = i + kmax
+          temp = x(j) * cexp(theta)
+          x(j) = x(i) - temp
+          x(i) = x(i) + temp
         enddo
       enddo
       kmax=istep
