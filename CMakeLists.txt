@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(CMAKE_PROJECT_NAME "ForAdjoint")
-set(project_version "0.1.0")
+set(project_version "0.2.0")
 project(${CMAKE_PROJECT_NAME}, VERSION ${project_version} LANGUAGES Fortran)
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
