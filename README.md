@@ -75,12 +75,13 @@ program example
   type(sachead) :: header
   
   ! Load seismogram data (SAC format)
-  call read_sac("observed.sac", header, observed, ier)
-  call read_sac("synthetic.sac", header, synthetic, ier)
+  call sacio_readsac("observed.sac", header, observed, ier)
+  call sacio_readsac("synthetic.sac", header, synthetic, ier)
   dt = header.delta
+  tb = header.b
   
   ! Define time window [start_time, end_time]
-  time_window(1,:) = [50.0, 100.0]
+  time_window(1,:) = [50.0, 100.0] - tb
   
   ! Calculate adjoint source
   call epm%calc_adjoint_source(observed, synthetic, dt, time_window)
@@ -265,7 +266,6 @@ ForAdjoint/
 │   └── ex_cc_misfit.f90
 ├── tests/                      # Test cases and validation
 ├── example_data/               # Sample seismograms
-└── docs/                       # Documentation
 ```
 
 ## 🔬 Scientific Applications

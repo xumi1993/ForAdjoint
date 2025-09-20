@@ -42,7 +42,8 @@
 
 # jupyter notebooks
 ./*.ipynb
-*.sac
+/*.sac
+tests/*.sac
 
 build/
 bin/
