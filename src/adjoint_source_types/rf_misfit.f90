@@ -23,7 +23,7 @@ contains
     integer, optional, intent(in) :: maxit
     real(kind=dp), dimension(2) :: win_tr
     real(kind=dp) :: shift_loc, minderr_loc, shift_rev
-    integer :: maxit_loc, nlen_win, nlen_win_rf, nb, ne, nlen
+    integer :: maxit_loc, nlen_win, nlen_win_rf, nb, ne, nlen, nlen_rf, nstart
     real(kind=dp), dimension(:), allocatable :: zrf, dat_norm, syn_norm, r_rev, z_rev, diff, &
                                                 adj_r, adj_z, adj_r_tw, adj_z_tw, num, den, &
                                                 dat_tw, syn_tw
@@ -47,7 +47,13 @@ contains
     end if
 
     this%nwin = 1
-    nlen = size(dat)
+    nlen = size(synr)
+    nlen_rf = size(dat)
+
+    allocate(dat_norm(nlen), syn_norm(nlen))
+    dat_norm = 0.0_dp
+    syn_norm = 0.0_dp
+
     if (allocated(this%adj_src_r)) deallocate(this%adj_src_r)
     if (allocated(this%adj_src_z)) deallocate(this%adj_src_z)
     allocate(this%adj_src_r(nlen))
@@ -58,14 +64,25 @@ contains
 
     ! calculate z-rf for normalization
     call deconit(synz, synz, real(dt), 10., real(f0), 10, 0.001, 0, zrf)
-    dat_norm = dat / maxval(zrf)
-    syn_norm = syn / maxval(zrf)
+
+    if (nlen >= nlen_rf) then
+      dat_norm(1:nlen_rf) = dat(1:nlen_rf) / maxval(abs(zrf))
+      syn_norm(1:nlen_rf) = syn(1:nlen_rf) / maxval(abs(zrf))
+    else
+      dat_norm(1:nlen) = dat(1:nlen) / maxval(abs(zrf))
+      syn_norm(1:nlen) = syn(1:nlen) / maxval(abs(zrf))
+    end if
 
     ! trim for measurement
-    nb = int((tp - shift_loc)/ dt) + 1
-    if (nb < 1) error stop 'Error: Not enough samples for the beginning of the window'
-    z_rev(1:nlen) = synz(nlen:nb:-1)
-    r_rev(1:nlen) = synr(nlen:nb:-1)
+    nstart = int((tp - shift_loc)/ dt) + 1
+    if (nstart < 1) error stop 'Error: Not enough samples for the beginning of the window'
+    allocate(z_rev(nlen), r_rev(nlen))
+    z_rev = 0.0_dp
+    r_rev = 0.0_dp
+    z_rev(1:nlen) = synz(nlen:nstart:-1)
+    r_rev(1:nlen) = synr(nlen:nstart:-1)
+    call window_taper(z_rev, cfg%taper_percentage, cfg%itaper_type)
+    call window_taper(r_rev, cfg%taper_percentage, cfg%itaper_type)
 
     ! calculate adjoint source
     shift_rev = nlen * dt - shift_loc
@@ -77,16 +94,20 @@ contains
     deallocate(num, den, z_rev, r_rev)
 
     ! tapper
-    win_tr(1) = window(1) + shift_loc
-    win_tr(2) = window(2) + shift_loc
-    if (win_tr(1) < 0.0_dp) win_tr(1) = 0.0_dp
-    call get_window_info(win_tr, dt, nb, ne, nlen_win_rf)
+    nlen_win_rf = int((window(2) - window(1))/dt) + 1
+    nb = nstart
+    ne = nb + nlen_win_rf - 1
     adj_r_tw = adj_r(nb:ne)
     adj_z_tw = adj_z(nb:ne)
     call window_taper(adj_r_tw, cfg%taper_percentage, cfg%itaper_type)
     call window_taper(adj_z_tw, cfg%taper_percentage, cfg%itaper_type)
+    this%adj_src_r(nb:ne) = adj_r_tw
+    this%adj_src_z(nb:ne) = adj_z_tw
 
     ! trim data and synthetic
+    win_tr = window + shift_loc
+    if (win_tr(1) < 0.0_dp) win_tr(1) = 0.0_dp
+    call get_window_info(win_tr, dt, nb, ne, nlen_win)
     dat_tw = dat_norm(nb:ne)
     syn_tw = syn_norm(nb:ne)
     call window_taper(dat_tw, cfg%taper_percentage, cfg%itaper_type)
@@ -97,13 +118,7 @@ contains
     this%residuals(1) = sum(syn_tw - dat_tw) / nlen_win_rf
     this%total_misfit = this%total_misfit + this%misfits(1)
 
-    win_tr = window + tp
-    call get_window_info(win_tr, dt, nb, ne, nlen_win)
-    if (nlen_win > nlen_win_rf) then
-      nb = nb - (nlen_win - nlen_win_rf)
-    end if
-    this%adj_src_r(nb:ne) = adj_r_tw
-    this%adj_src_z(nb:ne) = adj_z_tw
+    deallocate(adj_r, adj_z, dat_norm, syn_norm, adj_r_tw, adj_z_tw)
 
   end subroutine calc_adjoint_source
 
