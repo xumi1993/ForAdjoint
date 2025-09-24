@@ -47,5 +47,6 @@ tests/*.sac
 
 build/
 bin/
+test_local/
 
 .DS_Store
