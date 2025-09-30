@@ -37,10 +37,15 @@ endif()
 file(GLOB utils_sources "src/utils/*.f90")
 file(GLOB adjoint_sources "src/adjoint_source_types/*.f90")
 file(GLOB main_sources "src/*.f90")
-add_library(foradjoint STATIC ${utils_sources} ${adjoint_sources} ${main_sources})
+file(GLOB window_selector_sources "src/window_selector/*.f90")
+add_library(utils_objs OBJECT ${utils_sources})
+add_library(foradjoint STATIC ${adjoint_sources} ${main_sources})
+add_library(winselector STATIC ${window_selector_sources})
 
 # Link LAPACK to the library
-target_link_libraries(foradjoint ${LAPACK_LIBRARIES})
+target_link_libraries(foradjoint ${LAPACK_LIBRARIES} utils_objs)
+
+target_link_libraries(winselector utils_objs)
 
 # add example executables
 add_subdirectory(examples)

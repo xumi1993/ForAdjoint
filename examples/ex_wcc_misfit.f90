@@ -8,8 +8,8 @@ program ex_wcc_misfit
   implicit none
 
   character(len=MAX_STRING_LEN) :: fobs_r, fobs_z, fsyn_r, fsyn_z, fadj, &
-                                   sshort_p, slong_p, stime_min, stime_max
-  real(kind=dp) :: short_p, long_p, time_min, time_max, dt, tp
+                                   stime_min, stime_max
+  real(kind=dp) :: time_min, time_max, dt, tp
   real(kind=dp), dimension(:), allocatable :: syn_r, syn_z, dat_r, dat_z
   real(kind=dp), dimension(2) :: window
   integer :: ier

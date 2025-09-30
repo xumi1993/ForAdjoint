@@ -597,6 +597,33 @@ contains
       endif
     end do
     
-end subroutine process_cycle_skipping
+  end subroutine process_cycle_skipping
+
+  pure function interp2(x, y, v, xq, yq) result(vq)
+    real(kind = dp) :: vq
+    real(kind = dp), intent(in) :: xq, yq
+    real(kind = dp), dimension(:), intent(in) :: x, y
+    real(kind = dp), dimension(:,:), intent(in) :: v
+    integer :: i, x1, y1, x2, y2, ix(4), iy(4)
+    real(kind = dp) :: vn, xr(2), yr(2), N(4), vr(4)
+
+    x1 = minloc(xq - x, 1, mask = xq .ge. x)
+    y1 = minloc(yq - y, 1, mask = yq .ge. y)
+    x2 = maxloc(xq - x, 1, mask = xq .lt. x)
+    y2 = maxloc(yq - y, 1, mask = yq .lt. y)
+    vn = abs( (x(x2) - x(x1)) &
+            * (y(y2) - y(y1)) )
+    xr = x( [ x1, x2 ] )
+    yr = y( [ y1, y2 ] )
+    ix = [ 2, 1, 2, 1 ]
+    iy = [ 2, 2, 1, 1 ]
+    do i = 1, 4
+      N(i) = abs( (xr(ix(i)) - xq) * (yr(iy(i)) - yq) )
+    end do
+    vr = reshape(v( [ x1, x2 ], &
+                    [ y1, y2 ] ), shape = [ 4 ])
+    vq = dot_product(vr, N/vn)
+    return
+  end function interp2
 
 end module signal
