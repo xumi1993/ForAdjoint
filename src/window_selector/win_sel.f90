@@ -255,7 +255,7 @@ contains
     i2 = 1
     idx = 1
     
-    ! 归并两个已排序的数组
+    ! merge the two arrays
     do while (i1 <= n1 .and. i2 <= n2)
       if (arr1(i1) <= arr2(i2)) then
         merged(idx) = arr1(i1)
@@ -267,7 +267,7 @@ contains
       idx = idx + 1
     end do
     
-    ! 添加剩余的元素
+    ! append remaining elements
     do while (i1 <= n1)
       merged(idx) = arr1(i1)
       i1 = i1 + 1
