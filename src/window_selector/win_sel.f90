@@ -25,7 +25,6 @@ module win_sel
     real(kind=dp) :: noise_level, tstart, tend, min_period, max_period, jump_buffer, dt, t0
     integer :: nstart, nend, npts
     integer, allocatable :: win_samp(:,:)
-    ! real(kind=dp), allocatable :: snr(:)  ! signal to noise ratio
   contains
     procedure :: init => initialize, gen_good_windows
     procedure, private :: sliding_cc
