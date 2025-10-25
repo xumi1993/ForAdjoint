@@ -44,6 +44,8 @@
 ./*.ipynb
 /*.sac
 tests/*.sac
+tests/*.txt
+tests/*.png
 
 build/
 bin/

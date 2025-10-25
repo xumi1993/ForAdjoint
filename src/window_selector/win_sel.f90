@@ -45,8 +45,8 @@ contains
     this%npts = size(dat)
     this%min_period = min_period
     this%max_period = max_period
-    this%tstart = tp - min_period / 2.0_dp + t0
-    this%tend = dis / win_config_global%min_velocity + min_period / 2.0_dp + t0
+    this%tstart = tp - min_period * 1.5 - t0
+    this%tend = dis / win_config_global%min_velocity + min_period * 1.5 - t0
     this%jump_buffer = win_config_global%jump_fac * this%min_period
     this%nstart = int(this%tstart / dt) + 1
     this%nend = min(size(dat), int(this%tend / dt) + 1)
@@ -75,7 +75,7 @@ contains
       call window_taper(dat_win, 1.0_dp, 1)
       call window_taper(syn_win, 1.0_dp, 1)
       call xcorr_shift_coe(dat_win, syn_win, this%dt, this%time_shift(i), this%cc_coe(i))
-      this%times_cc(i) = (dble(i + nlen)/2.0_dp - 1.0_dp) * this%dt
+      this%times_cc(i) = (dble(i - 1) + dble(nlen) / 2.0_dp) * this%dt
     enddo
     
   end subroutine sliding_cc
@@ -89,8 +89,16 @@ contains
     real(kind=dp), allocatable :: time_shift_grad(:)
     logical :: in_group, good_groups(max_good_win)
     real(kind=dp) :: max_amp, eng_dat, eng_syn
-    
 
+    ! First call sliding_cc to compute time_shift and cc_coe
+    call this%sliding_cc()
+
+    ! Allocate logical arrays
+    allocate(good_cc(size(this%cc_coe)))
+    allocate(good_shift(size(this%time_shift)))
+    allocate(good_time(size(this%times_cc)))
+    allocate(good_windows(size(this%time_shift)))
+    
     good_cc = (this%cc_coe > win_config_global%threshold_corr)
     good_shift = (abs(this%time_shift) < win_config_global%threshold_shift_fac * this%min_period)
     good_time = (this%times_cc >= this%tstart) .and. (this%times_cc <= this%tend)
@@ -147,13 +155,16 @@ contains
         good_groups(i) = .false.
         cycle
       end if
+      ib = int(this%times_cc(groups(i, 1)) / this%dt) + 1
+      ie = int(this%times_cc(groups(i, 2)) / this%dt) + 1
 
-      ! number of peaks too few
-      max_peaks = find_maxima(this%syn(groups(i, 1):groups(i, 2)))
-      min_peaks = find_maxima(-this%syn(groups(i, 1):groups(i, 2)))
+      ! number of peaks too few (only check observed waveform)
+      ! Convert time window to sample indices in the original waveform
+      max_peaks = find_maxima(this%dat(ib:ie))
+      min_peaks = find_maxima(-this%dat(ib:ie))
       n_peaks = size(max_peaks) + size(min_peaks)
-      max_peaks = find_maxima(this%dat(groups(i, 1):groups(i, 2)))
-      min_peaks = find_maxima(-this%dat(groups(i, 1):groups(i, 2)))
+      max_peaks = find_maxima(this%syn(ib:ie))
+      min_peaks = find_maxima(-this%syn(ib:ie))
       n_peaks = min(n_peaks, size(max_peaks) + size(min_peaks))
       if (n_peaks < win_config_global%min_peaks_troughs) then
         good_groups(i) = .false.
@@ -161,25 +172,26 @@ contains
       end if
 
       ! peaks too close
-      all_peaks = merge_sorted_arrays(min_peaks, max_peaks)
-      do ib = 2, size(all_peaks)
-        if ((all_peaks(ib) - all_peaks(ib-1)) * this%dt < 0.5_dp * this%min_period) then
-          good_groups(i) = .false.
-          exit
-        end if
-      end do
-      if (.not. good_groups(i)) cycle
+      ! all_peaks = merge_sorted_arrays(min_peaks, max_peaks)
+      ! do ib = 2, size(all_peaks)
+      !   if ((all_peaks(ib) - all_peaks(ib-1)) * this%dt < 0.5_dp * this%min_period) then
+      !     good_groups(i) = .false.
+      !     exit
+      !   end if
+      ! end do
+      ! if (.not. good_groups(i)) cycle
 
       ! signal to noise ratio too low
-      max_amp = maxval(abs(this%dat(groups(i, 1):groups(i, 2))))
+      ! ib and ie are already computed from time window above
+      max_amp = maxval(abs(this%dat(ib:ie)))
       if (max_amp / this%noise_level < win_config_global%max_noise_window) then
         good_groups(i) = .false.
         cycle
       end if
 
       ! Energy ratio too low
-      eng_dat = sum(this%dat(groups(i, 1):groups(i, 2))**2) / real(groups(i, 2) - groups(i, 1) + 1, kind=dp)
-      eng_syn = sum(this%syn(groups(i, 1):groups(i, 2))**2) / real(groups(i, 2) - groups(i, 1) + 1, kind=dp)
+      eng_dat = sum(this%dat(ib:ie)**2)
+      eng_syn = sum(this%syn(ib:ie)**2)
       if (eng_dat / eng_syn > win_config_global%max_energy_ratio .or. &
           eng_dat / eng_syn < 1/win_config_global%max_energy_ratio) then
         good_groups(i) = .false.
@@ -199,7 +211,9 @@ contains
     do i = 1, n_groups
       if (good_groups(i)) then
         iwin = iwin + 1
-        this%twin(iwin, :) = groups(i, :) * this%dt
+        ! Use times_cc array values instead of index * dt
+        this%twin(iwin, 1) = this%times_cc(groups(i, 1))
+        this%twin(iwin, 2) = this%times_cc(groups(i, 2))
         this%win_samp(iwin, :) = groups(i, :)
       end if
     end do
