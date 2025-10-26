@@ -2,6 +2,8 @@ module win_sel
   use config
   use signal
   use cross_correlate
+  use sta_lta_mod
+  use fftpack
   implicit none
 
   integer, private, parameter :: max_good_win = 1000
@@ -11,6 +13,7 @@ module win_sel
                      threshold_shift_fac = 0.3, threshold_corr = 0.7, min_win_len_fac = 1.5, &
                      max_noise_window = 5.0, max_energy_ratio = 5.0
     integer :: min_peaks_troughs = 3
+    logical :: is_split_phases = .true.
   end type win_config
 
   type :: win_sel_type
@@ -26,8 +29,8 @@ module win_sel
     integer :: nstart, nend, npts
     integer, allocatable :: win_samp(:,:)
   contains
-    procedure :: init => initialize, gen_good_windows
-    procedure, private :: sliding_cc
+    procedure :: init => initialize, gen_good_windows, split_phases
+    procedure, private :: sliding_cc, split_window_by_phases
   end type win_sel_type
 
   type(win_config) :: win_config_global
@@ -45,8 +48,8 @@ contains
     this%npts = size(dat)
     this%min_period = min_period
     this%max_period = max_period
-    this%tstart = tp - min_period * 1.5 - t0
-    this%tend = dis / win_config_global%min_velocity + min_period * 1.5 - t0
+    this%tstart = tp - min_period * 1.5 + t0
+    this%tend = dis / win_config_global%min_velocity + min_period * 1.5 + t0
     this%jump_buffer = win_config_global%jump_fac * this%min_period
     this%nstart = int(this%tstart / dt) + 1
     this%nend = min(size(dat), int(this%tend / dt) + 1)
@@ -84,7 +87,7 @@ contains
     class(win_sel_type), intent(inout) :: this
     integer :: i, n_jump, n_groups, group_start, group_end, ib, ie, iwin, n_peaks, &
                groups(max_good_win, 2)
-    integer, allocatable, dimension(:) :: max_peaks, min_peaks, all_peaks
+    integer, allocatable, dimension(:) :: max_peaks, min_peaks
     logical, allocatable, dimension(:) :: good_windows, good_cc, good_shift, good_time
     real(kind=dp), allocatable :: time_shift_grad(:)
     logical :: in_group, good_groups(max_good_win)
@@ -219,6 +222,280 @@ contains
     end do
 
   end subroutine gen_good_windows
+
+  subroutine split_phases(this)
+    ! Split windows by phases using STA/LTA analysis
+    class(win_sel_type), intent(inout) :: this
+    real(kind=dp), dimension(:), allocatable :: stalta, env_data
+    complex(kind=dp), dimension(:), allocatable :: hilb
+    integer, dimension(:), allocatable :: peaks, troughs
+    integer, dimension(:, :), allocatable :: sub_windows, new_twin_samp, old_twin_samp
+    real(kind=dp), dimension(:, :), allocatable :: new_twin, old_twin
+    integer :: i, j, n_sub_windows, n_total_windows, min_window_samples
+    type(fft_cls) :: fft_ins
+    
+    if (this%n_win == 0) return
+    
+    ! Compute the envelope of the data using Hilbert transform
+    hilb = fft_ins%hilbert(this%syn)
+    env_data = abs(hilb)
+    deallocate(hilb)
+    
+    ! Compute the STA/LTA of the envelope
+    stalta = STA_LTA(env_data, this%dt, this%min_period)
+    deallocate(env_data)
+    
+    ! Identify peaks and troughs in the STA/LTA function
+    peaks = find_maxima(stalta)
+    troughs = find_maxima(-stalta)  ! Find minima by inverting
+    
+    ! Minimum window length in samples
+    min_window_samples = int(win_config_global%min_win_len_fac * this%min_period / this%dt)
+    
+    ! Save old windows
+    old_twin = this%twin
+    old_twin_samp = this%win_samp
+    
+    ! Estimate maximum possible sub-windows: each original window could split into 
+    ! as many sub-windows as there are peaks (worst case)
+    ! Allocate temporary arrays with maximum possible size
+    n_total_windows = size(peaks) + this%n_win ! Over-estimate for safety
+    allocate(new_twin(n_total_windows, 2))
+    allocate(new_twin_samp(n_total_windows, 2))
+    
+    ! Fill new window arrays in a single loop
+    j = 0
+    do i = 1, this%n_win
+      call this%split_window_by_phases(this%win_samp(i, 1), this%win_samp(i, 2), &
+                                       stalta, peaks, troughs, min_window_samples, &
+                                       sub_windows, n_sub_windows)
+      do n_sub_windows = 1, size(sub_windows, 1)
+        j = j + 1
+        new_twin_samp(j, 1) = sub_windows(n_sub_windows, 1)
+        new_twin_samp(j, 2) = sub_windows(n_sub_windows, 2)
+        new_twin(j, 1) = this%times_cc(sub_windows(n_sub_windows, 1))
+        new_twin(j, 2) = this%times_cc(sub_windows(n_sub_windows, 2))
+      end do
+      deallocate(sub_windows)
+    end do
+    
+    ! Actual number of windows after splitting
+    n_total_windows = j
+    
+    ! Update window arrays with actual size
+    if (allocated(this%twin)) deallocate(this%twin)
+    if (allocated(this%win_samp)) deallocate(this%win_samp)
+    this%n_win = n_total_windows
+    allocate(this%twin(n_total_windows, 2))
+    allocate(this%win_samp(n_total_windows, 2))
+    ! Copy only the used portion
+    this%twin = new_twin(1:n_total_windows, :)
+    this%win_samp = new_twin_samp(1:n_total_windows, :)
+    
+    ! Cleanup
+    deallocate(stalta, peaks, troughs)
+    deallocate(new_twin, new_twin_samp, old_twin, old_twin_samp)
+
+  end subroutine split_phases
+
+  subroutine split_window_by_phases(this, start_idx, end_idx, stalta, peaks, troughs, &
+                                    min_window_length, sub_windows, n_sub_windows)
+    ! Use STA/LTA to detect multiple phases within a window and split at troughs
+    ! 
+    ! Simplified logic:
+    ! - Find all peaks within the window
+    ! - If multiple peaks exist, split at the troughs between them
+    ! - No significance threshold - pure phase separation based on STA/LTA structure
+    class(win_sel_type), intent(inout) :: this
+    integer, intent(in) :: start_idx, end_idx
+    real(kind=dp), dimension(:), intent(in) :: stalta
+    integer, dimension(:), intent(in) :: peaks, troughs
+    integer, dimension(:, :), allocatable, intent(out) :: sub_windows
+    integer, intent(out) :: n_sub_windows
+    integer, intent(in) :: min_window_length
+    
+    integer :: start_sample, end_sample, i, j, ib, ie, n_window_peaks, n_between_troughs, n_peaks
+    integer :: peak1, peak2, min_trough_idx, split_point
+    integer, dimension(:), allocatable :: window_peaks, split_points, between_troughs
+    integer, dimension(:), allocatable :: max_peaks, min_peaks
+    real(kind=dp) :: min_trough_value
+    logical, dimension(:), allocatable :: mask
+        
+    ! Convert times_cc indices to stalta indices (sample points)
+    start_sample = int(this%times_cc(start_idx) / this%dt) + 1
+    end_sample = int(this%times_cc(end_idx) / this%dt) + 1
+    
+    ! Ensure indices are within valid range
+    start_sample = max(1, min(start_sample, size(stalta)))
+    end_sample = max(1, min(end_sample, size(stalta)))
+    
+    ! Return original window if invalid range
+    if (start_sample >= end_sample) then
+      allocate(sub_windows(1, 2))
+      sub_windows(1, 1) = start_idx
+      sub_windows(1, 2) = end_idx
+      n_sub_windows = 1
+      return
+    end if
+    
+    ! Find all peaks within the window
+    allocate(mask(size(peaks)))
+    mask = (peaks >= start_sample) .and. (peaks <= end_sample)
+    n_window_peaks = count(mask)
+    
+    ! Single peak or no peak, don't split
+    if (n_window_peaks <= 1) then
+      allocate(sub_windows(1, 2))
+      sub_windows(1, 1) = start_idx
+      sub_windows(1, 2) = end_idx
+      n_sub_windows = 1
+      deallocate(mask)
+      return
+    end if
+    
+    ! Extract window peaks
+    allocate(window_peaks(n_window_peaks))
+    j = 0
+    do i = 1, size(peaks)
+      if (mask(i)) then
+        j = j + 1
+        window_peaks(j) = peaks(i)
+      end if
+    end do
+    deallocate(mask)
+    
+    ! Build split points array
+    allocate(split_points(n_window_peaks + 1))
+    split_points(1) = start_sample  ! Start point
+    
+    ! Find split points between consecutive peaks
+    do i = 1, n_window_peaks - 1
+      peak1 = window_peaks(i)
+      peak2 = window_peaks(i + 1)
+      
+      ! Find troughs between two peaks
+      allocate(mask(size(troughs)))
+      mask = (troughs > peak1) .and. (troughs < peak2)
+      n_between_troughs = count(mask)
+      
+      if (n_between_troughs > 0) then
+        ! Extract troughs between peaks
+        allocate(between_troughs(n_between_troughs))
+        j = 0
+        do j = 1, size(troughs)
+          if (mask(j)) then
+            between_troughs(count(mask(1:j))) = troughs(j)
+          end if
+        end do
+        
+        ! Choose the trough with minimum STA/LTA value as split point
+        min_trough_value = huge(min_trough_value)
+        min_trough_idx = between_troughs(1)
+        do j = 1, n_between_troughs
+          if (stalta(between_troughs(j)) < min_trough_value) then
+            min_trough_value = stalta(between_troughs(j))
+            min_trough_idx = between_troughs(j)
+          end if
+        end do
+        split_points(i + 1) = min_trough_idx
+        deallocate(between_troughs)
+      else
+        ! If no trough, use midpoint between two peaks
+        split_points(i + 1) = (peak1 + peak2) / 2
+      end if
+      deallocate(mask)
+    end do
+    
+    split_points(n_window_peaks + 1) = end_sample  ! End point
+    
+    ! Build sub-windows after splitting
+    ! First count valid sub-windows (checking both sample length and times_cc length)
+    n_sub_windows = 0
+    do i = 1, n_window_peaks
+      ! Check if sample length is sufficient
+      if (split_points(i + 1) - split_points(i) >= min_window_length) then
+        n_sub_windows = n_sub_windows + 1
+      end if
+    end do
+    
+    ! If no valid sub-windows, return original window
+    if (n_sub_windows == 0) then
+      allocate(sub_windows(1, 2))
+      sub_windows(1, 1) = start_idx
+      sub_windows(1, 2) = end_idx
+      n_sub_windows = 1
+      deallocate(split_points, window_peaks)
+      return
+    end if
+    
+    ! Allocate and fill sub-windows
+    allocate(sub_windows(n_sub_windows, 2))
+    j = 0
+    do i = 1, n_window_peaks
+      ! Check if sample length is sufficient
+      if (split_points(i + 1) - split_points(i) >= min_window_length) then
+        ! Temporarily store the sub-window indices
+        j = j + 1
+        ! Convert back to times_cc indices
+        ! Find the times_cc index closest to split_points(i) * dt
+        sub_windows(j, 1) = start_idx
+        sub_windows(j, 2) = end_idx
+        do split_point = start_idx, end_idx
+          if (abs(this%times_cc(split_point) - split_points(i) * this%dt) < &
+              abs(this%times_cc(sub_windows(j, 1)) - split_points(i) * this%dt)) then
+            sub_windows(j, 1) = split_point
+          end if
+          if (abs(this%times_cc(split_point) - split_points(i + 1) * this%dt) < &
+              abs(this%times_cc(sub_windows(j, 2)) - split_points(i + 1) * this%dt)) then
+            sub_windows(j, 2) = split_point
+          end if
+        end do
+        
+        ! Ensure within original window range
+        sub_windows(j, 1) = max(start_idx, min(sub_windows(j, 1), end_idx))
+        sub_windows(j, 2) = max(start_idx, min(sub_windows(j, 2), end_idx))
+        
+        ! Check peaks/troughs requirement for this sub-window
+        ! Convert times_cc indices to waveform sample indices
+        ib = int(this%times_cc(sub_windows(j, 1)) / this%dt) + 1
+        ie = int(this%times_cc(sub_windows(j, 2)) / this%dt) + 1
+        ib = max(1, min(ib, this%npts))
+        ie = max(1, min(ie, this%npts))
+        
+        if (ie > ib) then
+          ! Count peaks and troughs in observed and synthetic waveforms
+          max_peaks = find_maxima(this%dat(ib:ie))
+          min_peaks = find_maxima(-this%dat(ib:ie))
+          n_peaks = size(max_peaks) + size(min_peaks)
+          max_peaks = find_maxima(this%syn(ib:ie))
+          min_peaks = find_maxima(-this%syn(ib:ie))
+          n_peaks = min(n_peaks, size(max_peaks) + size(min_peaks))
+          
+          ! If peaks/troughs requirement not met, mark this sub-window as invalid
+          if (n_peaks < win_config_global%min_peaks_troughs) then
+            j = j - 1  ! Discard this sub-window
+          end if
+        else
+          j = j - 1  ! Invalid sample range, discard
+        end if
+      end if
+    end do
+    
+    ! Update actual number of valid sub-windows
+    n_sub_windows = j
+    
+    ! If no valid sub-windows after peaks check, return original window
+    if (n_sub_windows == 0) then
+      deallocate(sub_windows)
+      allocate(sub_windows(1, 2))
+      sub_windows(1, 1) = start_idx
+      sub_windows(1, 2) = end_idx
+      n_sub_windows = 1
+    end if
+    
+    deallocate(split_points, window_peaks)
+    
+  end subroutine split_window_by_phases
 
   subroutine xcorr_shift_coe(d, s, dt, tshift, cc_max_coef)
     real(kind=dp), dimension(:), intent(in) :: s, d

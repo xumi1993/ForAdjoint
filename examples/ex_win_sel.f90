@@ -8,7 +8,6 @@ program ex_win_sel
 
   type(sachead) :: obs_head, syn_head
   type(win_sel_type) :: win
-  type(velmodel_type) :: vmodel
   character(len=256) :: obs_file, syn_file, output_file
   character(len=256) :: smin_period, smax_period
   real(kind=dp), allocatable :: obs_data(:), syn_data(:)
@@ -76,7 +75,7 @@ program ex_win_sel
   ! Get basic parameters
   npts = obs_head%npts
   dt = dble(obs_head%delta)
-  t0 = dble(obs_head%b)
+  t0 = -dble(obs_head%b)
   evdp = dble(obs_head%evdp)
   gcarc = dble(obs_head%gcarc)
   dis = dble(obs_head%dist)
@@ -186,6 +185,49 @@ program ex_win_sel
     print *, '  - Time shift threshold too low'
     print *, '  - Signal-to-noise ratio too low'
     print *, '  - Energy ratio outside acceptable range'
+  end if
+
+  ! Split windows by phases using STA/LTA
+  if (win%n_win > 0) then
+    print *, ''
+    print *, '=================================='
+    print *, 'Splitting Windows by Phases'
+    print *, '=================================='
+    print *, ''
+    print *, 'Using STA/LTA to detect multiple phases within windows...'
+    print *, 'Parameters:'
+    print *, '  Minimum sub-window length: ', 0.5_dp * min_period, ' s'
+    print *, ''
+    
+    call win%split_phases()
+    
+    print *, '=================================='
+    print *, 'Phase Splitting Results'
+    print *, '=================================='
+    print *, ''
+    print *, 'Number of windows after phase splitting: ', win%n_win
+    print *, ''
+    
+    if (win%n_win > 0) then
+      print *, 'Window details after splitting:'
+      print *, '  Win#    Start(s)      End(s)   Duration(s)   Avg CC   Avg Shift(s)'
+      print *, '  ----------------------------------------------------------------'
+      
+      do i = 1, win%n_win
+        print '(I5, 2F12.2, F12.2, F10.3, F12.3)', i, &
+              win%twin(i, 1), win%twin(i, 2), &
+              win%twin(i, 2) - win%twin(i, 1), &
+              sum(win%cc_coe(win%win_samp(i,1):win%win_samp(i,2))) / &
+                real(win%win_samp(i,2) - win%win_samp(i,1) + 1, kind=dp), &
+              sum(win%time_shift(win%win_samp(i,1):win%win_samp(i,2))) / &
+                real(win%win_samp(i,2) - win%win_samp(i,1) + 1, kind=dp)
+      end do
+      
+      print *, ''
+      print *, 'Summary statistics after splitting:'
+      print *, '  Total window duration: ', sum(win%twin(:, 2) - win%twin(:, 1)), ' s'
+      print *, '  Coverage: ', sum(win%twin(:, 2) - win%twin(:, 1)) / (win%tend - win%tstart) * 100.0_dp, ' %'
+    end if
   end if
 
   print *, ''

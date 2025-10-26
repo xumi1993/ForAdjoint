@@ -1,5 +1,6 @@
 module sta_lta_mod
   use config
+  use signal
   implicit none
   contains
 
@@ -46,7 +47,6 @@ module sta_lta_mod
       enddo
     endif
 
-
   ! copy the original synthetic into the extended array, right justified
   !  call random_number(extended_syn)
   !  extended_syn=noise*extended_syn
@@ -57,6 +57,7 @@ module sta_lta_mod
     ! if (DEBUG) write(*,*) 'Number of points used to pre-extend synthetics ', n_extend
 
   ! initialise sta/lta variables
+    allocate(STA_LTA(npts))
     STA_LTA(:)=0.0
     sta=0.0 ; lta = 0.0
 
@@ -99,6 +100,6 @@ module sta_lta_mod
 
     deallocate(extended_syn)
 
-  end function
+  end function STA_LTA
 
 end module sta_lta_mod
