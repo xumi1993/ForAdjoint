@@ -137,7 +137,7 @@ program ex_win_sel
   print *, 'Initializing window selector...'
   print *, '  Window length: ', 2.0_dp * min_period, ' s'
   
-  call win%init(obs_data, syn_data, dt, t0, tp, dis, min_period, max_period)
+  call win%init(obs_data, syn_data, dt, t0, tp, dis, min_period)
 
   print *, '  tstart = ', win%tstart, ' s'
   print *, '  tend   = ', win%tend, ' s'

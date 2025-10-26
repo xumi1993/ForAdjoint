@@ -20,12 +20,12 @@ module win_sel
     integer :: n_win = 0
     real(kind=dp), allocatable :: dat(:)  ! data array for windowing
     real(kind=dp), allocatable :: syn(:)  ! synthetic array for windowing
-    real(kind=dp), allocatable :: twin(:,:)   ! window start time (s)
+    real(kind=dp), allocatable :: twin(:,:)   ! window time (s)
     real(kind=dp), allocatable :: wt(:)   ! window weight
     real(kind=dp), allocatable :: cc_coe(:)   ! cross-correlation coefficient
     real(kind=dp), allocatable :: time_shift(:)   ! time shift
     real(kind=dp), allocatable :: times_cc(:) ! logical array for good windows
-    real(kind=dp) :: noise_level, tstart, tend, min_period, max_period, jump_buffer, dt, t0
+    real(kind=dp) :: noise_level, tstart, tend, min_period, jump_buffer, dt, t0
     integer :: nstart, nend, npts
     integer, allocatable :: win_samp(:,:)
   contains
@@ -36,10 +36,10 @@ module win_sel
   type(win_config) :: win_config_global
 
 contains
-  subroutine initialize(this, dat, syn, dt, t0, tp, dis, min_period, max_period)
+  subroutine initialize(this, dat, syn, dt, t0, tp, dis, min_period)
     class(win_sel_type), intent(inout) :: this
     real(kind=dp), dimension(:), intent(in) :: dat, syn
-    real(kind=dp), intent(in) :: dt, t0, tp, dis, min_period, max_period
+    real(kind=dp), intent(in) :: dt, t0, tp, dis, min_period
 
     this%dat = dat / maxval(abs(syn))
     this%syn = syn / maxval(abs(syn))
@@ -47,7 +47,6 @@ contains
     this%t0 = t0 ! t0 is the same as specfem t0
     this%npts = size(dat)
     this%min_period = min_period
-    this%max_period = max_period
     this%tstart = tp - min_period * 1.5 + t0
     this%tend = dis / win_config_global%min_velocity + min_period * 1.5 + t0
     this%jump_buffer = win_config_global%jump_fac * this%min_period
