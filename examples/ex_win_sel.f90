@@ -3,7 +3,6 @@ program ex_win_sel
   use sacio
   use signal
   use win_sel
-  use vpmodel
   use travel_times_mod
   implicit none
 
