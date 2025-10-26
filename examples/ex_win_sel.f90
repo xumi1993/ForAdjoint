@@ -9,20 +9,22 @@ program ex_win_sel
   type(sachead) :: obs_head, syn_head
   type(win_sel_type) :: win
   character(len=256) :: obs_file, syn_file, output_file
-  character(len=256) :: smin_period, smax_period
+  character(len=256) :: smin_period, smax_period, sis_split_phases
   real(kind=dp), allocatable :: obs_data(:), syn_data(:)
   real(kind=dp), allocatable :: ttime(:)
   real(kind=dp) :: dt, t0, tp, dis, evdp, gcarc
   real(kind=dp) :: min_period, max_period
   integer :: i, npts, ier, funit
+  logical :: is_split_phases
 
   ! Check command line arguments
-  if (command_argument_count() /= 4) then
-    print *, 'Usage: xex_win_sel obs_file syn_file min_period max_period'
+  if (command_argument_count() /= 5) then
+    print *, 'Usage: xex_win_sel obs_file syn_file min_period max_period is_split_phases'
     print *, '  obs_file: Observed seismogram in SAC format'
     print *, '  syn_file: Synthetic seismogram in SAC format'
     print *, '  min_period: Minimum period for bandpass filter (s)'
     print *, '  max_period: Maximum period for bandpass filter (s)'
+    print *, '  is_split_phases: Split windows by phases (true/false)'
     print *, ''
     print *, 'Example:'
     print *, '  ./bin/xex_win_sel example_data/obs.II.ABKT.LHZ.sac \'
@@ -37,16 +39,19 @@ program ex_win_sel
   call get_command_argument(4, smax_period)
   read(smin_period, *) min_period
   read(smax_period, *) max_period
+  call get_command_argument(5, sis_split_phases)
+  read(sis_split_phases, *) is_split_phases
 
   ! Configure window selection parameters
-  win_config_global%threshold_corr = 0.8_dp        ! cc_threshold in notebook
+  win_config_global%threshold_corr = 0.8_dp        ! cc_threshold
   win_config_global%threshold_shift_fac = 0.3_dp   ! time_shift_threshold = 15s = 0.3*min_period
   win_config_global%jump_fac = 0.1_dp              ! jump_buffer = 0.1 * min_period
-  win_config_global%min_velocity = 2.4_dp          ! min_velocity in notebook
+  win_config_global%min_velocity = 2.4_dp          ! min_velocity (km/s)
   win_config_global%min_win_len_fac = 1.5_dp       ! min_length_period = 1.5 * min_period
-  win_config_global%min_peaks_troughs = 3          ! min_peaks_troughs in notebook
-  win_config_global%max_noise_window = 5.0_dp      ! max_noise_window in notebook
-  win_config_global%max_energy_ratio = 10.0_dp     ! max_energy_ratio in notebook
+  win_config_global%min_peaks_troughs = 3          ! min_peaks_troughs
+  win_config_global%max_noise_window = 5.0_dp      ! max_noise_window
+  win_config_global%max_energy_ratio = 10.0_dp     ! max_energy_ratio
+  win_config_global%is_split_phases = is_split_phases ! is_split_phases
 
   print *, '=================================='
   print *, 'Window Selection Test Program'
@@ -185,49 +190,6 @@ program ex_win_sel
     print *, '  - Time shift threshold too low'
     print *, '  - Signal-to-noise ratio too low'
     print *, '  - Energy ratio outside acceptable range'
-  end if
-
-  ! Split windows by phases using STA/LTA
-  if (win%n_win > 0) then
-    print *, ''
-    print *, '=================================='
-    print *, 'Splitting Windows by Phases'
-    print *, '=================================='
-    print *, ''
-    print *, 'Using STA/LTA to detect multiple phases within windows...'
-    print *, 'Parameters:'
-    print *, '  Minimum sub-window length: ', 0.5_dp * min_period, ' s'
-    print *, ''
-    
-    call win%split_phases()
-    
-    print *, '=================================='
-    print *, 'Phase Splitting Results'
-    print *, '=================================='
-    print *, ''
-    print *, 'Number of windows after phase splitting: ', win%n_win
-    print *, ''
-    
-    if (win%n_win > 0) then
-      print *, 'Window details after splitting:'
-      print *, '  Win#    Start(s)      End(s)   Duration(s)   Avg CC   Avg Shift(s)'
-      print *, '  ----------------------------------------------------------------'
-      
-      do i = 1, win%n_win
-        print '(I5, 2F12.2, F12.2, F10.3, F12.3)', i, &
-              win%twin(i, 1), win%twin(i, 2), &
-              win%twin(i, 2) - win%twin(i, 1), &
-              sum(win%cc_coe(win%win_samp(i,1):win%win_samp(i,2))) / &
-                real(win%win_samp(i,2) - win%win_samp(i,1) + 1, kind=dp), &
-              sum(win%time_shift(win%win_samp(i,1):win%win_samp(i,2))) / &
-                real(win%win_samp(i,2) - win%win_samp(i,1) + 1, kind=dp)
-      end do
-      
-      print *, ''
-      print *, 'Summary statistics after splitting:'
-      print *, '  Total window duration: ', sum(win%twin(:, 2) - win%twin(:, 1)), ' s'
-      print *, '  Coverage: ', sum(win%twin(:, 2) - win%twin(:, 1)) / (win%tend - win%tstart) * 100.0_dp, ' %'
-    end if
   end if
 
   print *, ''
