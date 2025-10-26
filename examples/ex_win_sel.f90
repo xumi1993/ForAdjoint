@@ -4,6 +4,7 @@ program ex_win_sel
   use signal
   use win_sel
   use vpmodel
+  use travel_times_mod
   implicit none
 
   type(sachead) :: obs_head, syn_head
@@ -11,7 +12,6 @@ program ex_win_sel
   character(len=256) :: obs_file, syn_file, output_file
   character(len=256) :: smin_period, smax_period, sis_split_phases
   real(kind=dp), allocatable :: obs_data(:), syn_data(:)
-  real(kind=dp), allocatable :: ttime(:)
   real(kind=dp) :: dt, t0, tp, dis, evdp, gcarc
   real(kind=dp) :: min_period, max_period
   integer :: i, npts, ier, funit
@@ -118,13 +118,16 @@ program ex_win_sel
   
   ! Calculate travel time from source to receiver
   ! get_travel_time(dsrc, drec, gcarc_rec) returns travel time array
-  allocate(ttime(1))
   print*, '  Source depth (evdp): ', evdp, ' km'
   print*, '  Great circle distance (gcarc): ', gcarc, ' deg'
 !   ttime = vmodel%get_travel_time(evdp, [0.0_dp], [gcarc])
-!   tp = ttime(1)
-  tp = 931.6_dp  ! Pre-calculated
-  deallocate(ttime)
+  block 
+    integer :: nphases
+    character(len=8), dimension(:), allocatable :: names
+    real(kind=dp), dimension(:), allocatable :: times
+    call ttimes(gcarc,evdp,nphases,names,times)
+    tp = times(1)
+  end block
   
   print *, '  Source depth: ', evdp, ' km'
   print *, '  Great circle distance: ', gcarc, ' deg'

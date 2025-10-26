@@ -47,6 +47,11 @@ tests/*.sac
 tests/*.txt
 tests/*.png
 
+# libtau
+*.hed
+*.tbl
+*.lis
+
 build/
 bin/
 test_local/

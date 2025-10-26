@@ -40,12 +40,25 @@ file(GLOB main_sources "src/*.f90")
 file(GLOB window_selector_sources "src/window_selector/*.f90")
 add_library(utils_objs OBJECT ${utils_sources})
 add_library(foradjoint STATIC ${adjoint_sources} ${main_sources})
+add_subdirectory(src/window_selector/ttimes_mod)
+
+# Configure the TauP data directory path using configure_file
+set(TAUP_DATA_DIR "${CMAKE_SOURCE_DIR}/src/window_selector/ttimes_mod")
+configure_file(
+  "${CMAKE_SOURCE_DIR}/src/window_selector/taup_data_path.inc.in"
+  "${CMAKE_BINARY_DIR}/taup_data_path.inc"
+  @ONLY
+)
+
 add_library(winselector STATIC ${window_selector_sources})
+
+# Add the build directory to include path so Fortran can find the generated file
+target_include_directories(winselector PRIVATE ${CMAKE_BINARY_DIR})
 
 # Link LAPACK to the library
 target_link_libraries(foradjoint ${LAPACK_LIBRARIES} utils_objs)
 
-target_link_libraries(winselector utils_objs)
+target_link_libraries(winselector utils_objs tau)
 
 # add example executables
 add_subdirectory(examples)
