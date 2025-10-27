@@ -48,8 +48,8 @@ program ex_win_sel
   win_config_global%min_velocity = 2.4_dp          ! min_velocity (km/s)
   win_config_global%min_win_len_fac = 1.5_dp       ! min_length_period = 1.5 * min_period
   win_config_global%min_peaks_troughs = 3          ! min_peaks_troughs
-  win_config_global%max_noise_window = 5.0_dp      ! max_noise_window
-  win_config_global%max_energy_ratio = 10.0_dp     ! max_energy_ratio
+  win_config_global%min_snr_window = 5.0_dp      ! min_snr_window
+  win_config_global%min_energy_ratio = 10.0_dp     ! min_energy_ratio
   win_config_global%is_split_phases = is_split_phases ! is_split_phases
 
   print *, '=================================='
@@ -152,8 +152,8 @@ program ex_win_sel
   print *, '  Jump buffer         : ', win%jump_buffer, ' s'
   print *, '  Min window length   : ', win_config_global%min_win_len_fac * min_period, ' s'
   print *, '  Min peaks/troughs   : ', win_config_global%min_peaks_troughs
-  print *, '  Max noise ratio     : ', win_config_global%max_noise_window
-  print *, '  Max energy ratio    : ', win_config_global%max_energy_ratio
+  print *, '  Max noise ratio     : ', win_config_global%min_snr_window
+  print *, '  Max energy ratio    : ', win_config_global%min_energy_ratio
   print *, ''
   
   call win%gen_good_windows()
