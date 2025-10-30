@@ -77,8 +77,8 @@ program example
   ! Load seismogram data (SAC format)
   call sacio_readsac("observed.sac", header, observed, ier)
   call sacio_readsac("synthetic.sac", header, synthetic, ier)
-  dt = header.delta
-  tb = header.b
+  dt = header%delta
+  tb = header%b
   
   ! Define time window [start_time, end_time]
   time_window(1,:) = [50.0, 100.0] - tb
