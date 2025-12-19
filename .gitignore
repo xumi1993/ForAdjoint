@@ -46,6 +46,7 @@
 tests/*.sac
 tests/*.txt
 tests/*.png
+window_results.txt
 
 # libtau
 *.hed

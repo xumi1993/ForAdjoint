@@ -2,7 +2,7 @@ program ex_win_sel
   use config
   use sacio
   use signal
-  use win_sel
+  use flexwin
   use travel_times_mod
   implicit none
 
@@ -50,7 +50,13 @@ program ex_win_sel
   win_config_global%min_peaks_troughs = 3          ! min_peaks_troughs
   win_config_global%min_snr_window = 5.0_dp      ! min_snr_window
   win_config_global%min_energy_ratio = 10.0_dp     ! min_energy_ratio
-  win_config_global%is_split_phases = is_split_phases ! is_split_phases
+  win_config_global%threshold_dlna = 1.3_dp        ! dlna_acceptance_level
+  win_config_global%c_4b = 10.0_dp                 ! c_4b (curtailing)
+  if (is_split_phases) then
+      win_config_global%resolution_strategy = 2
+  else
+      win_config_global%resolution_strategy = 1
+  end if
 
   print *, '=================================='
   print *, 'Window Selection Test Program'
@@ -137,7 +143,7 @@ program ex_win_sel
   print *, 'Initializing window selector...'
   print *, '  Window length: ', 2.0_dp * min_period, ' s'
   
-  call win%init(obs_data, syn_data, dt, t0, tp, dis, min_period)
+  call win%init(obs_data, syn_data, dt, t0, tp, dis, min_period, max_period)
 
   print *, '  tstart = ', win%tstart, ' s'
   print *, '  tend   = ', win%tend, ' s'
@@ -148,15 +154,15 @@ program ex_win_sel
   print *, 'Generating good windows...'
   print *, 'Window selection criteria:'
   print *, '  CC threshold        : ', win_config_global%threshold_corr
-  print *, '  Time shift threshold: ', win_config_global%threshold_shift_fac * min_period, ' s'
-  print *, '  Jump buffer         : ', win%jump_buffer, ' s'
-  print *, '  Min window length   : ', win_config_global%min_win_len_fac * min_period, ' s'
+   print *, '  Time shift threshold: ', win_config_global%threshold_shift_fac * win%min_period, ' s'
+   print *, '  Jump buffer         : ', win_config_global%jump_fac * win%min_period, ' s'
+   print *, '  Min window length   : ', win_config_global%min_win_len_fac * win%min_period, ' s'
   print *, '  Min peaks/troughs   : ', win_config_global%min_peaks_troughs
   print *, '  Max noise ratio     : ', win_config_global%min_snr_window
   print *, '  Max energy ratio    : ', win_config_global%min_energy_ratio
   print *, ''
   
-  call win%gen_good_windows()
+  call win%select_windows()
 
   ! Print results
   print *, '=================================='
@@ -168,17 +174,15 @@ program ex_win_sel
 
   if (win%n_win > 0) then
     print *, 'Window details:'
-    print *, '  Win#    Start(s)      End(s)   Duration(s)   Avg CC   Avg Shift(s)'
+    print *, '  Win#    Start(s)      End(s)   Duration(s)   CC       Shift(s)'
     print *, '  ----------------------------------------------------------------'
     
     do i = 1, win%n_win
       print '(I5, 2F12.2, F12.2, F10.3, F12.3)', i, &
             win%twin(i, 1), win%twin(i, 2), &
             win%twin(i, 2) - win%twin(i, 1), &
-            sum(win%cc_coe(win%win_samp(i,1):win%win_samp(i,2))) / &
-              real(win%win_samp(i,2) - win%win_samp(i,1) + 1, kind=dp), &
-            sum(win%time_shift(win%win_samp(i,1):win%win_samp(i,2))) / &
-              real(win%win_samp(i,2) - win%win_samp(i,1) + 1, kind=dp)
+            win%cc_coe(i), &
+            win%time_shift(i)
     end do
     
     print *, ''
@@ -206,7 +210,7 @@ program ex_win_sel
   
   open(newunit=funit, file=output_file, status='replace', action='write')
   write(funit, '(A)') '# Window Selection Results'
-  write(funit, '(A)') '# Format: window_number  start_time(s)  end_time(s)  duration(s)  avg_cc  avg_shift(s)'
+  write(funit, '(A)') '# Format: window_number  start_time(s)  end_time(s)  duration(s)  cc  shift(s)  dlnA'
   write(funit, '(A,I0)') '# Number of windows: ', win%n_win
   write(funit, '(A,F10.2)') '# tstart: ', win%tstart
   write(funit, '(A,F10.2)') '# tend: ', win%tend
@@ -215,28 +219,18 @@ program ex_win_sel
   
   if (win%n_win > 0) then
     do i = 1, win%n_win
-      write(funit, '(I5, 2F12.2, F12.2, F10.3, F12.3)') i, &
+      write(funit, '(I5, 2F12.2, F12.2, F10.3, F12.3, F12.3)') i, &
             win%twin(i, 1), win%twin(i, 2), &
             win%twin(i, 2) - win%twin(i, 1), &
-            sum(win%cc_coe(win%win_samp(i,1):win%win_samp(i,2))) / &
-              real(win%win_samp(i,2) - win%win_samp(i,1) + 1, kind=dp), &
-            sum(win%time_shift(win%win_samp(i,1):win%win_samp(i,2))) / &
-              real(win%win_samp(i,2) - win%win_samp(i,1) + 1, kind=dp)
+            win%cc_coe(i), &
+            win%time_shift(i), &
+            win%dlnA(i)
     end do
   end if
   close(funit)
 
   ! Write detailed CC and time shift data for visualization
-  output_file = 'window_cc_shift.txt'
-  print *, 'Writing CC and shift data to: ', trim(output_file)
-  
-  open(newunit=funit, file=output_file, status='replace', action='write')
-  write(funit, '(A)') '# Sliding window cross-correlation and time shift results'
-  write(funit, '(A)') '# Format: time(s)  cc_coefficient  time_shift(s)'
-  do i = 1, size(win%times_cc)
-    write(funit, '(F12.4, F10.4, F12.4)') win%times_cc(i), win%cc_coe(i), win%time_shift(i)
-  end do
-  close(funit)
+  ! Removed as sliding CC is no longer computed
   
   print *, ''
   print *, 'Output files created successfully!'
