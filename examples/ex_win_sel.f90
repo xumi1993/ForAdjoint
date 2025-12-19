@@ -53,9 +53,9 @@ program ex_win_sel
   win_config_global%threshold_dlna = 1.3_dp        ! dlna_acceptance_level
   win_config_global%c_4b = 10.0_dp                 ! c_4b (curtailing)
   if (is_split_phases) then
-      win_config_global%resolution_strategy = 2
+    win_config_global%resolution_strategy = 2
   else
-      win_config_global%resolution_strategy = 1
+    win_config_global%resolution_strategy = 1
   end if
 
   print *, '=================================='
