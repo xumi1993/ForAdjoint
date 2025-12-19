@@ -597,6 +597,66 @@ contains
       endif
     end do
     
-end subroutine process_cycle_skipping
+  end subroutine process_cycle_skipping
 
+  pure function interp2(x, y, v, xq, yq) result(vq)
+    real(kind = dp) :: vq
+    real(kind = dp), intent(in) :: xq, yq
+    real(kind = dp), dimension(:), intent(in) :: x, y
+    real(kind = dp), dimension(:,:), intent(in) :: v
+    integer :: i, x1, y1, x2, y2, ix(4), iy(4)
+    real(kind = dp) :: vn, xr(2), yr(2), N(4), vr(4)
+
+    x1 = minloc(xq - x, 1, mask = xq .ge. x)
+    y1 = minloc(yq - y, 1, mask = yq .ge. y)
+    x2 = maxloc(xq - x, 1, mask = xq .lt. x)
+    y2 = maxloc(yq - y, 1, mask = yq .lt. y)
+    vn = abs( (x(x2) - x(x1)) &
+            * (y(y2) - y(y1)) )
+    xr = x( [ x1, x2 ] )
+    yr = y( [ y1, y2 ] )
+    ix = [ 2, 1, 2, 1 ]
+    iy = [ 2, 2, 1, 1 ]
+    do i = 1, 4
+      N(i) = abs( (xr(ix(i)) - xq) * (yr(iy(i)) - yq) )
+    end do
+    vr = reshape(v( [ x1, x2 ], &
+                    [ y1, y2 ] ), shape = [ 4 ])
+    vq = dot_product(vr, N/vn)
+    return
+  end function interp2
+
+  function find_maxima(x) result(idx)
+
+    real(kind=dp), dimension(:), intent(in) :: x
+    integer, dimension(:), allocatable :: idx
+    integer :: i, n, count
+    
+    logical, allocatable :: rising(:), falling(:)
+    integer, allocatable :: max_idx(:)
+
+    n = size(x)
+    if (n < 3) then
+      allocate(idx(0))
+      return
+    end if
+
+    allocate(rising(n-1), falling(n-1))
+
+    rising = (x(2:) - x(1:n-1)) > 0.0
+    falling = (x(2:) - x(1:n-1)) < 0.0
+
+    allocate(max_idx(n-2))
+    count = 0
+    do i = 1, n-2
+      if (rising(i) .and. falling(i+1)) then
+        count = count + 1
+        max_idx(count) = i + 1
+      end if
+    end do
+
+    allocate(idx(count))
+    idx = max_idx(1:count)
+
+  end function find_maxima
 end module signal

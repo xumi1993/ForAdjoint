@@ -2,6 +2,7 @@ module adjoint_source
   use cc_tt_misfit, only: CCTTMisfit
   use mt_tt_misfit, only: MTTTMisfit  
   use exponentiated_phase_misfit, only: ExponentiatedPhaseMisfit
+  use ccc_misfit, only: CCCMisfit
   use waveform_misfit, only: WaveformMisfit
   use waveform_conv_misfit, only: WaveformConvMisfit
   use rf_misfit, only: RFMisfit
@@ -44,6 +45,14 @@ contains
         allocate(ExponentiatedPhaseMisfit :: misfit_out)
         select type (misfit_out)
         type is (ExponentiatedPhaseMisfit)
+          call misfit_out%calc_adjoint_source(dat, syn, dt, windows)
+          call filter_adj(misfit_out%adj_src, dt, windows)
+        end select
+
+      case (IMEAS_CCC) ! Cross-correlation coefficient
+        allocate(CCCmisfit :: misfit_out)
+        select type (misfit_out)
+        type is (CCCmisfit)
           call misfit_out%calc_adjoint_source(dat, syn, dt, windows)
           call filter_adj(misfit_out%adj_src, dt, windows)
         end select
