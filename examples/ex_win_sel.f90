@@ -43,15 +43,20 @@ program ex_win_sel
 
   ! Configure window selection parameters
   win_config_global%threshold_corr = 0.8_dp        ! cc_threshold
-  win_config_global%threshold_shift_fac = 0.3_dp   ! time_shift_threshold = 15s = 0.3*min_period
-  win_config_global%jump_fac = 0.1_dp              ! jump_buffer = 0.1 * min_period
-  win_config_global%min_velocity = 2.4_dp          ! min_velocity (km/s)
+  win_config_global%threshold_shift_fac = 2.0_dp   ! time_shift_threshold = 15s = 0.3*min_period
+  win_config_global%min_velocity = 2.3_dp          ! min_velocity (km/s)
   win_config_global%min_win_len_fac = 1.5_dp       ! min_length_period = 1.5 * min_period
   win_config_global%min_peaks_troughs = 3          ! min_peaks_troughs
   win_config_global%min_snr_window = 5.0_dp      ! min_snr_window
   win_config_global%min_energy_ratio = 10.0_dp     ! min_energy_ratio
-  win_config_global%threshold_dlna = 1.3_dp        ! dlna_acceptance_level
-  win_config_global%c_4b = 10.0_dp                 ! c_4b (curtailing)
+  win_config_global%threshold_dlna = 1.0_dp        ! dlna_acceptance_level
+  win_config_global%max_time_before_first_arrival = 10.0_dp ! Maximum time before the first arrival to start window selection
+  win_config_global%c_0 = 1.0_dp
+  win_config_global%c_2 = 0.0_dp
+  win_config_global%c_3a = 4.0_dp
+  win_config_global%c_3b = 2.5_dp
+  win_config_global%c_4a = 2.0_dp
+  win_config_global%c_4b = 6.0_dp
   if (is_split_phases) then
     win_config_global%resolution_strategy = 2
   else
@@ -109,8 +114,10 @@ program ex_win_sel
   print *, '  Period range: ', min_period, ' - ', max_period, ' s'
   print *, '  Frequency range: ', 1.0_dp/max_period, ' - ', 1.0_dp/min_period, ' Hz'
   
+  call window_taper(obs_data, 0.1_dp, 1)
   call bandpass_dp(obs_data, dt, real(1.0_dp/max_period, kind=cr), &
                    real(1.0_dp/min_period, kind=cr), 2)
+  call window_taper(syn_data, 0.1_dp, 1)
   call bandpass_dp(syn_data, dt, real(1.0_dp/max_period, kind=cr), &
                    real(1.0_dp/min_period, kind=cr), 2)
 
@@ -155,7 +162,6 @@ program ex_win_sel
   print *, 'Window selection criteria:'
   print *, '  CC threshold        : ', win_config_global%threshold_corr
    print *, '  Time shift threshold: ', win_config_global%threshold_shift_fac * win%min_period, ' s'
-   print *, '  Jump buffer         : ', win_config_global%jump_fac * win%min_period, ' s'
    print *, '  Min window length   : ', win_config_global%min_win_len_fac * win%min_period, ' s'
   print *, '  Min peaks/troughs   : ', win_config_global%min_peaks_troughs
   print *, '  Max noise ratio     : ', win_config_global%min_snr_window

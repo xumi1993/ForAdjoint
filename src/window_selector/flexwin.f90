@@ -47,6 +47,7 @@ contains
     class(win_sel_type), intent(inout) :: this
     real(kind=dp), dimension(:), intent(in) :: dat, syn
     real(kind=dp), intent(in) :: dt, t0, tp, dis, min_period, max_period
+    integer :: ntp
 
     if (allocated(this%dat)) deallocate(this%dat)
     if (allocated(this%syn)) deallocate(this%syn)
@@ -77,7 +78,14 @@ contains
     if (this%nstart > 0) then
        this%noise_level = maxval(abs(dat(1:this%nstart)))
     else
-       this%noise_level = 1.0_dp ! Avoid division by zero
+       ! Fallback: use data up to first arrival if available
+       ntp = int((tp + t0) / dt) + 1
+       if (ntp > 1) then
+          ntp = min(ntp, size(dat))
+          this%noise_level = maxval(abs(dat(1:ntp)))
+       else
+          this%noise_level = 1.0_dp ! Avoid division by zero
+       end if
     end if
 
   end subroutine initialize
@@ -130,6 +138,18 @@ contains
        cand%snr_eng = (sum(dat_win**2) / real(nlen, kind=dp)) / (this%noise_level**2)
     else
        cand%snr_eng = 1.0e5_dp
+    end if
+
+    ! Check min peaks/troughs
+    if (win_config_global%min_peaks_troughs > 0) then
+       block
+         integer, allocatable :: pks(:), trgs(:)
+         pks = find_maxima(syn_win)
+         trgs = find_maxima(-syn_win)
+         if (size(pks) + size(trgs) < win_config_global%min_peaks_troughs) then
+            cand%rejected = .true.
+         end if
+       end block
     end if
     
     ! Calculate weight (example: based on CC and shift)
@@ -276,7 +296,7 @@ contains
       if (candidates(i)%snr_amp < win_config_global%min_snr_window) then
         candidates(i)%rejected = .true.
       end if
-      
+
     end do
     
     ! 5. Resolution Strategy
